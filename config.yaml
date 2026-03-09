@@ -1,0 +1,4 @@
+target_bucket: sodium_archive_manual
+target_dirs:
+  - "/data/slidetag":
+      - "daniel_new"
