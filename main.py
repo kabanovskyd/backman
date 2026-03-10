@@ -78,14 +78,12 @@ def retrieve_gcp_files(
 
     print('Scanning bucket: ')
     for blob in blobs:
+        print(f'- {blob.name}')
         manifest[blob.name] = {
             "size": blob.size,
             "updated": blob.updated,
             "md5": blob.md5_hash,  # base64-encoded MD5
         }
-    print('Found contents: ')
-    for blob in blobs:
-        print(f'- {blob.name}')
 
     return manifest
 
