@@ -121,13 +121,13 @@ def collect_files(root: str, subdir: str) -> list[dict]:
     return results
 
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "./credentials.json"
-client = storage.Client()
-
 with open('config.yaml', 'r') as file:
     config = yaml.safe_load(file)
 
 target_directories = config['target_dirs']
 target_bucket = config['target_bucket']
+
+client = storage.Client()
 
 for directory in target_directories.keys():
     target_subdirs = config['target_dirs'][directory]
@@ -140,7 +140,8 @@ for directory in target_directories.keys():
         to_upload = find_files_to_upload(items, gcp_items, f"{rel_directory}/{subdir}/", directory)
         for item in to_upload.keys():
             bucket = target_bucket + f'/{rel_directory}/{subdir}'
-            upload(bucket, item, bucket + '/' + item)
+            bucket_handle = client.bucket(bucket)
+            upload(bucket_handle, item, bucket + '/' + item)
 
 
 
