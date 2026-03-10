@@ -144,7 +144,7 @@ for directory in target_directories.keys():
             rel_path = path.split(directory)[-1]
             bucket = target_bucket + f'/{rel_directory}{rel_path}'
             print(bucket)
-            bucket_handle = client.bucket(bucket)
+            bucket_handle = client.bucket(target_bucket)
             upload(bucket_handle, item['path'], bucket)
 
 
