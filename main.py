@@ -139,7 +139,7 @@ for directory in target_directories.keys():
         rel_directory = directory.split('/')[-1]
         gcp_items = retrieve_gcp_files(client, target_bucket, rel_directory, subdir)
         to_upload = find_files_to_upload(items, gcp_items, f"{rel_directory}/{subdir}/", directory)
-        for item in [to_upload[0]]:
+        for item in to_upload:
             path = item['path']
             rel_path = path.split(directory)[-1]
             bucket = f'{rel_directory}{rel_path}'
