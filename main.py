@@ -126,8 +126,8 @@ target_directories = config['target_dirs']
 target_bucket = config['target_bucket']
 
 for directory in target_directories:
-    print(directory)
-    target_subdirs = config['target_dirs'][directory]
+    print(directory.keys()[0])
+    target_subdirs = config['target_dirs'][directory.keys()[0]]
     for subdir in target_subdirs:
         items = collect_files(subdir)
         exit()
