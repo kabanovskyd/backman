@@ -84,11 +84,8 @@ def retrieve_gcp_files(
             "md5": blob.md5_hash,  # base64-encoded MD5
         }
     print('Found contents: ')
-    if len(blobs) > 0:
-        for blob in blobs:
-            print(f'- {blob.name}')
-    else:
-        print('- (Empty)')
+    for blob in blobs:
+        print(f'- {blob.name}')
 
     return manifest
 
