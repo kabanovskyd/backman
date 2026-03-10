@@ -116,7 +116,7 @@ def collect_files(root: str) -> list[dict]:
 
     return results
 
-
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "./credentials.json"
 client = storage.Client()
 
 with open('config.yaml', 'r') as file:
