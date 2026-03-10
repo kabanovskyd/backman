@@ -90,9 +90,9 @@ def retrieve_gcp_files(
     return manifest
 
 
-def collect_files(root: str) -> list[dict]:
+def collect_files(root: str, subdir: str) -> list[dict]:
     results = []
-    print(f'Processing directory: {root}...')
+    print(f'Processing directory: {root}/{subdir}...')
     def _walk(path):
         with os.scandir(path) as it:
             for entry in it:
@@ -109,6 +109,7 @@ def collect_files(root: str) -> list[dict]:
                             "mtime": stat.st_mtime,
                         })
 
+    path = pathlib.Path(root) / subdir
     _walk(root)
     print(f'Found contents:')
     for item in results:
@@ -128,7 +129,7 @@ target_bucket = config['target_bucket']
 for directory in target_directories.keys():
     target_subdirs = config['target_dirs'][directory]
     for subdir in target_subdirs:
-        items = collect_files(subdir)
+        items = collect_files(directory, subdir)
         exit()
         directory = directory.split('/')[-1]
         gcp_items = retrieve_gcp_files(directory, subdir)
