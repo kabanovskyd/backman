@@ -138,8 +138,9 @@ for directory in target_directories.keys():
         to_upload = find_files_to_upload(items, gcp_items, f"{rel_directory}/{subdir}/", directory)
         for item in [to_upload[0]]:
             path = item['path']
-            print(path)
-            bucket = target_bucket + f'/{rel_directory}/{subdir}'
+            rel_path = path.split(directory)[-1]
+            bucket = target_bucket + f'/{rel_directory}/{subdir}/{rel_path}'
+            print(bucket)
             bucket_handle = client.bucket(bucket)
             upload(bucket_handle, item, bucket + '/' + item)
 
