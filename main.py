@@ -110,7 +110,7 @@ def collect_files(root: str, subdir: str) -> list[dict]:
                         })
 
     path = pathlib.Path(root) / subdir
-    _walk(root)
+    _walk(path)
     print(f'Found contents:')
     for item in results:
         print(f'- {root}/{item}')
