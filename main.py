@@ -11,6 +11,7 @@ EXCLUDE_EXTENSIONS = {
     ".pyo",
     ".json",
     ".env",
+    ".bam",
     ".swp",   # vim swap files
 }
 
