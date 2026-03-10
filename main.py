@@ -33,6 +33,9 @@ def upload(
     remote_path: str
 ) -> None:
     stat = os.stat(local_path)
+    if not bucket.exists():
+        print(f'Bucket {bucket} does not exist')
+        exit(1)
     blob = bucket.blob(remote_path)
     blob.metadata = {
         "source_mtime": str(stat.st_mtime),
