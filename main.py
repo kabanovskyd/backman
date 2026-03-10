@@ -84,8 +84,11 @@ def retrieve_gcp_files(
             "md5": blob.md5_hash,  # base64-encoded MD5
         }
     print('Found contents: ')
-    for blob in blobs:
-        print(f'- {blob.name}')
+    if len(blobs) > 0:
+        for blob in blobs:
+            print(f'- {blob.name}')
+    else:
+        print('- (Empty)')
 
     return manifest
 
@@ -111,9 +114,9 @@ def collect_files(root: str, subdir: str) -> list[dict]:
 
     path = pathlib.Path(root) / subdir
     _walk(path)
-    print(f'Found contents:')
-    for item in results:
-        print(f'- {root}/{item}')
+    #print(f'Found contents:')
+    #for item in results:
+    #    print(f'- {root}/{item}')
 
     return results
 
@@ -130,9 +133,10 @@ for directory in target_directories.keys():
     target_subdirs = config['target_dirs'][directory]
     for subdir in target_subdirs:
         items = collect_files(directory, subdir)
-        exit()
         directory = directory.split('/')[-1]
+        print(directory)
         gcp_items = retrieve_gcp_files(directory, subdir)
+        exit()
         to_upload = find_files_to_upload(items, gcp_items, f"{directory}/{subdir}/")
         for item in to_upload.keys():
             bucket = target_bucket + f'/{directory}/{subdir}'
