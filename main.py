@@ -135,7 +135,7 @@ for directory in target_directories.keys():
         items = collect_files(directory, subdir)
         directory = directory.split('/')[-1]
         print(directory)
-        gcp_items = retrieve_gcp_files(directory, subdir)
+        gcp_items = retrieve_gcp_files(client, target_bucket, directory, subdir)
         exit()
         to_upload = find_files_to_upload(items, gcp_items, f"{directory}/{subdir}/")
         for item in to_upload.keys():
