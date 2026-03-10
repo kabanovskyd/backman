@@ -133,11 +133,11 @@ for directory in target_directories.keys():
     target_subdirs = config['target_dirs'][directory]
     for subdir in target_subdirs:
         items = collect_files(directory, subdir)
-        directory = directory.split('/')[-1]
-        print(directory)
-        gcp_items = retrieve_gcp_files(client, target_bucket, directory, subdir)
+        rel_directory = directory.split('/')[-1]
+        print(rel_directory)
+        gcp_items = retrieve_gcp_files(client, target_bucket, rel_directory, subdir)
         print(items[0])
-        to_upload = find_files_to_upload(items, gcp_items, f"{directory}/{subdir}/")
+        to_upload = find_files_to_upload(items, gcp_items, f"{directory}/{subdir}/", directory)
         exit()
         for item in to_upload.keys():
             bucket = target_bucket + f'/{directory}/{subdir}'
