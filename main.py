@@ -45,14 +45,19 @@ def upload(
 def find_files_to_upload(
     local_files: list[dict],
     remote_manifest: dict,
-    bucket_prefix: str
+    bucket_prefix: str,
+    directory: str
 ) -> list[dict]:
 
     """Return only local files that are missing or changed in GCS."""
     to_upload = []
 
     for file in local_files:
-        remote_key = bucket_prefix + file["relative_path"]
+        abs_path = file['path']
+        rel_path = abs_path.split(directory)[-1]
+        folder = directory.split('/')[-1]
+        remote_key = bucket_prefix + folder + rel_path
+        print(remote_key)
 
         if remote_key not in remote_manifest:
             to_upload.append({**file, "reason": "missing"})
