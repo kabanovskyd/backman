@@ -220,6 +220,12 @@ def update(ctx):
             rel_directory = directory.split('/')[-1]
             gcp_items = retrieve_gcp_files(client, target_bucket, rel_directory, subdir)
             to_upload = find_files_to_upload(items, gcp_items, f"{rel_directory}/{subdir}/", directory)
+
+            print(to_upload)
+            opt = prompt_choice('Proceed with backup? (y/n): ', ['yes', 'y', 'no', 'n'])
+            if opt in ['no', 'n']:
+                exit(0)
+
             for item in to_upload:
                 path = item['path']
                 rel_path = path.split(directory)[-1]
