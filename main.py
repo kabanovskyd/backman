@@ -77,7 +77,7 @@ def find_files_to_upload(
         if remote_key not in remote_manifest:
             to_upload.append({**file, "reason": "missing"})
         elif file["size"] != remote_manifest[remote_key]["size"]:
-            to_upload.append({**file, "reason": "size_changed"})
+            to_upload.append({**file, "reason": "modified"})
         # optionally add MD5 comparison here for extra confidence
 
     return to_upload
