@@ -72,7 +72,7 @@ def find_files_to_upload(
         abs_path = file['path']
         rel_path = abs_path.split(directory)[-1]
         folder = directory.split('/')[-1]
-        remote_key = bucket_prefix + folder + rel_path
+        remote_key = folder + rel_path
         print(f"REMOTE KEY: {remote_key}")
 
         if remote_key not in remote_manifest:
