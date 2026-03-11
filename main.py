@@ -193,11 +193,12 @@ def status(ctx):
                     if missing > 0:
                         print(f'  • {missing} missing')
 
-            else:
-                for dir in upload_dict:
-                    print(dir)
-                    for file in upload_dict[dir]:
-                        print(f"- {file['path']} ({file['reason']})")
+        else:
+            for dir in upload_dict:
+                print(dir)
+                for file in upload_dict[dir]:
+                    print(f"- {file['path']} ({file['reason']})")
+
         exit(0)
     else:
         print('Everything up to date')
