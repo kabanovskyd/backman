@@ -200,7 +200,7 @@ def status(ctx):
                 for dir in upload_dict:
                     print(dir)
                     for file in upload_dict[dir]:
-                        print(f'- {file['path']} ({file['reason']})')
+                        print(f"- {file['path']} ({file['reason']})")
         exit(0)
     else:
         print('Everything up to date')
