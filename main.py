@@ -73,17 +73,13 @@ def find_files_to_upload(
         rel_path = abs_path.split(directory)[-1]
         folder = directory.split('/')[-1]
         remote_key = bucket_prefix + folder + rel_path
-        print(remote_key)
+        # print(remote_key)
 
         if remote_key not in remote_manifest:
             to_upload.append({**file, "reason": "missing"})
         elif file["size"] != remote_manifest[remote_key]["size"]:
             to_upload.append({**file, "reason": "size_changed"})
         # optionally add MD5 comparison here for extra confidence
-
-    print('>>>>>> OUTDATED FILES <<<<<<')
-    for file in to_upload:
-        print(file)
 
     return to_upload
 
@@ -97,9 +93,9 @@ def retrieve_gcp_files(
     blobs = client.list_blobs(bucket, prefix=f"{directory}/{subdir}/")
     manifest = {}
 
-    print('Scanning bucket: ')
+    # print('Scanning bucket: ')
     for blob in blobs:
-        print(f'- {blob.name}')
+        # print(f'- {blob.name}')
         manifest[blob.name] = {
             "size": blob.size,
             "updated": blob.updated,
@@ -111,7 +107,7 @@ def retrieve_gcp_files(
 
 def collect_files(root: str, subdir: str) -> list[dict]:
     results = []
-    print(f'Processing directory: {root}/{subdir}...')
+    # print(f'Processing directory: {root}/{subdir}...')
     def _walk(path):
         with os.scandir(path) as it:
             for entry in it:
@@ -184,7 +180,7 @@ def status(ctx):
 
     if len(upload_dict) > 0:
         print("======= OUTDATED ITEMS =======")
-        if len(total_items) > 20:
+        if total_items > 20:
             opt = prompt_choice(f"Print all {len(to_upload)} items?", ['yes', 'y', 'no', 'n'])
             if opt in ['no', 'n']:
                 print("Displaying summary of tracked directories:")
