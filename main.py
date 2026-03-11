@@ -173,6 +173,7 @@ def status(ctx):
             items = collect_files(directory, subdir)
             rel_directory = directory.split('/')[-1]
             gcp_items = retrieve_gcp_files(client, target_bucket, rel_directory, subdir)
+            print(gcp_items)
             to_upload = find_files_to_upload(items, gcp_items, f"{rel_directory}/{subdir}/", directory)
             if len(to_upload) > 0:
                 upload_dict[subdir] = to_upload
@@ -181,7 +182,7 @@ def status(ctx):
     if len(upload_dict) > 0:
         print("======= OUTDATED ITEMS =======")
         if total_items > 20:
-            opt = prompt_choice(f"Print all {len(to_upload)} items?", ['yes', 'y', 'no', 'n'])
+            opt = prompt_choice(f"Print all {len(to_upload)} items? (y or n): ", ['yes', 'y', 'no', 'n'])
             if opt in ['no', 'n']:
                 print("Displaying summary of tracked directories:")
                 for dir in upload_dict:
@@ -191,7 +192,7 @@ def status(ctx):
                     if modified > 0:
                         print(f'  • {modified} modified')
                     if missing > 0:
-                        print(f'  • {modified} missing')
+                        print(f'  • {missing} missing')
 
             else:
                 for dir in upload_dict:
