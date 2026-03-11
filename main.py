@@ -163,6 +163,7 @@ def cli(ctx):
 
 
 @cli.command()
+@click.pass_context
 def status(ctx):
     upload_dict = {}
     total_items = 0
@@ -208,6 +209,7 @@ def status(ctx):
 
 
 @cli.command()
+@click.pass_context
 def update(ctx):
     """Run the backup on directories specified in the config file, updating any out-of-date files."""
     target_directories = ctx.obj["target_dirs"]
@@ -231,6 +233,7 @@ def update(ctx):
 
 
 @cli.command()
+@click.pass_context
 @click.argument("dirs", nargs=-1, required=True)
 def exclude(dirs):
     """Exclude specified directories from future backups, but keep them in the config file."""
