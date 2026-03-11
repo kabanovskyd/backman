@@ -73,7 +73,6 @@ def find_files_to_upload(
         rel_path = abs_path.split(directory)[-1]
         folder = directory.split('/')[-1]
         remote_key = folder + rel_path
-        print(f"REMOTE KEY: {remote_key}")
 
         if remote_key not in remote_manifest:
             to_upload.append({**file, "reason": "missing"})
