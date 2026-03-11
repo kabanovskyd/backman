@@ -178,7 +178,7 @@ def status(ctx):
                 total_items += len(to_upload)
 
     if len(upload_dict) > 0:
-        print("======= OUTDATED ITEMS =======")
+        print("\n======= OUTDATED ITEMS =======\n")
         if total_items > 20:
             opt = prompt_choice(f"Print all {len(to_upload)} items? (y or n): ", ['yes', 'y', 'no', 'n'])
             if opt in ['no', 'n']:
@@ -194,13 +194,14 @@ def status(ctx):
 
         else:
             for dir in upload_dict:
-                print(dir)
+                print(f"{dir}:")
                 for file in upload_dict[dir]:
                     print(f"- {file['path']} ({file['reason']})")
-
+        
+        print()
         exit(0)
     else:
-        print('Everything up to date')
+        print('Everything up to date.\n')
         exit(0)
 
 
