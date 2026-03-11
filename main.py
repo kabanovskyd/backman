@@ -178,7 +178,6 @@ def status(ctx):
                 total_items += len(to_upload)
 
     if len(upload_dict) > 0:
-        print(upload_dict)
         print("======= OUTDATED ITEMS =======")
         if total_items > 20:
             opt = prompt_choice(f"Print all {len(to_upload)} items? (y or n): ", ['yes', 'y', 'no', 'n'])
