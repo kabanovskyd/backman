@@ -172,13 +172,13 @@ def status(ctx):
             items = collect_files(directory, subdir)
             rel_directory = directory.split('/')[-1]
             gcp_items = retrieve_gcp_files(client, target_bucket, rel_directory, subdir)
-            print(gcp_items)
             to_upload = find_files_to_upload(items, gcp_items, f"{rel_directory}/{subdir}/", directory)
             if len(to_upload) > 0:
                 upload_dict[subdir] = to_upload
                 total_items += len(to_upload)
 
     if len(upload_dict) > 0:
+        print(upload_dict)
         print("======= OUTDATED ITEMS =======")
         if total_items > 20:
             opt = prompt_choice(f"Print all {len(to_upload)} items? (y or n): ", ['yes', 'y', 'no', 'n'])
