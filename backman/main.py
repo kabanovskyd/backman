@@ -225,7 +225,9 @@ def update(ctx):
             gcp_items = retrieve_gcp_files(client, target_bucket, rel_directory, subdir)
             to_upload = find_files_to_upload(items, gcp_items, f"{rel_directory}/{subdir}/", directory)
 
-            print(to_upload)
+            for item in to_upload:
+                print(f'- {item['path']}')
+
             opt = prompt_choice('Proceed with backup? (y/n): ', ['yes', 'y', 'no', 'n'])
             if opt in ['no', 'n']:
                 exit(0)
