@@ -247,11 +247,11 @@ def exclude(ctx, dirs):
     config = ctx.obj["config"]
 
     if any(directory not in config['directories'] for directory in dirs):
-        print('The following directories are not present in the backfile:')
+        print('\nThe following directories are not present in the backfile:\n')
         for directory in dirs:
             if directory not in config['directories']:
                 print(f'- {directory}')
-        print('Please make sure all listed directories are present in the backfile and re-run the command.')
+        print('\nPlease make sure all listed directories are present in the backfile and re-run the command.\n')
         exit(1)
 
     for directory in dirs:
