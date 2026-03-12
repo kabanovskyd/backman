@@ -357,7 +357,7 @@ def config(ctx):
             path = directory
             directory = config['directories'][directory]
             if directory['active']:
-                print(f'• {path}')
+                print(f'\n• {path}')
                 if 'bucket' in directory:
                     print(f'  bucket: {directory['bucket']}')
                 else:
@@ -371,7 +371,7 @@ def config(ctx):
             path = directory
             directory = config['directories'][directory]
             if not directory['active']:
-                print(f'• {path}')
+                print(f'\n• {path}')
                 if 'bucket' in directory:
                     print(f'  bucket: {directory['bucket']}')
                 else:
