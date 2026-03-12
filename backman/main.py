@@ -213,12 +213,12 @@ def status(ctx):
 @click.pass_context
 def update(ctx):
     """Run the backup on directories specified in the config file, updating any out-of-date files."""
-    target_directories = ctx.obj["target_dirs"]
+    target_directories = ctx.obj["directories"]
     config = ctx.obj["config"]
     client = ctx.obj["client"]
-    target_bucket = ctx.obj["target_bucket"]
     for directory in target_directories.keys():
-        target_subdirs = config['target_dirs'][directory]
+        target_subdirs = target_directories[directory]['subdirs']
+        target_bucket = target_directories[directory]['bucket']
         for subdir in target_subdirs:
             items = collect_files(directory, subdir)
             rel_directory = directory.split('/')[-1]
@@ -291,6 +291,12 @@ def include(ctx, dirs):
         print(f'- {dir}')
     print()
 
+
+@cli.command()
+@click.pass_context
+def config():
+    with open("backfile.yaml", "r") as file:
+        print(file)
 
 if __name__ == "__main__":
     cli()
