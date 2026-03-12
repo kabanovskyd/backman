@@ -307,18 +307,20 @@ def config(ctx):
     config = ctx.obj['config']
     print('============= BACKFILE SUMMARY =============')
     print(f'Authentication file: {config['authentication_file']}')
-    if any(directory['active'] for directory in config['directories']):
+    if any(config['directories'][directory]['active'] for directory in config['directories']):
         print(f'\nTracked directories:')
         for directory in config['directories']:
+            directory = config['directories'][directory]
             if directory['active']:
                 print(f'* {directory['path']}')
                 print(f' - bucket: {directory['bucket']}')
                 print(f' - subdirs:')
                 for subdir in directory['subdirs']:
                     print(f'  - {subdir}')
-    if not all(directory['active'] for directory in config['directories']):
+    if not all(config['directories'][directory]['active'] for directory in config['directories']):
         print(f'\nUntracked directories:')
         for directory in config['directories']:
+            directory = config['directories'][directory]
             if not directory['active']:
                 print(f'* {directory['path']}')
                 print(f' - bucket: {directory['bucket']}')
