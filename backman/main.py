@@ -325,6 +325,8 @@ def config(ctx):
                 print(f' - subdirs:')
                 for subdir in directory['subdirs']:
                     print(f'  - {subdir}')
+    print()
+
 
 if __name__ == "__main__":
     cli()
