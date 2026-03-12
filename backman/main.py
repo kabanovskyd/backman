@@ -258,12 +258,12 @@ def exclude(ctx, dirs):
         config['directories'][directory]['active'] = False
     
     with open("backfile.yaml", "w") as f:
-        print(f'Writing {config}')
         yaml.dump(config, f, default_flow_style=False)
     
-    print('The following directories have been excluded from tracking:')
+    print('\nThe following directories have been excluded from tracking:\n')
     for dir in dirs:
         print(f'- {dir}')
+    print()
 
 
 if __name__ == "__main__":
