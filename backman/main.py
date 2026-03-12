@@ -154,6 +154,10 @@ def cli(ctx):
 
     with open('backfile.yaml', 'r') as file:
         config = yaml.safe_load(file)
+
+    if ctx.invoked_subcommand == "set-auth":
+        return
+
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "./credentials.json"
     ctx.ensure_object(dict)
     ctx.obj["config"] = config
@@ -317,6 +321,20 @@ def init():
         yaml.dump(config, file, default_flow_style=False)
 
     print('Backfile created! Please run `backman set-auth [authentication_file]` to provide backman with a valid JSON authentication key file for GCP access.')
+
+
+@cli.command()
+@click.pass_context
+@click.argument("auth_key_path", nargs=1, required=True)
+def set_auth(ctx, auth_key_path):
+    if not pathlib.Path(auth_key_path).is_file():
+        print(f'{auth_key_path} not found.')
+        exit(1)
+
+    print(f'\nSetting {auth_key_path} as the authentication key file.')
+    ctx.config['authentication_file'] = auth_key_path
+    with open("backfile.yaml", "w") as file:
+        yaml.dump(config, file, default_flow_style=False)
 
 
 @cli.command()
