@@ -165,7 +165,7 @@ def status(ctx):
     config = ctx.obj["config"]
     client = ctx.obj["client"]
     target_bucket = ctx.obj["target_bucket"]
-    print(target_bucket)
+    print(target_directories)
     for directory in target_directories.keys():
         target_subdirs = config['target_dirs'][directory]
         for subdir in target_subdirs:
