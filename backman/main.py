@@ -357,14 +357,14 @@ def config(ctx):
             path = directory
             directory = config['directories'][directory]
             if directory['active']:
-                print(f'* {path}')
+                print(f'• {path}')
                 if 'bucket' in directory:
-                    print(f' - bucket: {directory['bucket']}')
+                    print(f'  bucket: {directory['bucket']}')
                 else:
-                    print(f' - bucket: ')
-                print(f' - subdirs:')
+                    print(f'  bucket: ')
+                print(f'  subdirs:')
                 for subdir in directory['subdirs']:
-                    print(f'  - {subdir}')
+                    print(f'   - {subdir}')
     if not all(config['directories'][directory]['active'] for directory in config['directories']):
         print(f'\nUntracked directories:')
         for directory in config['directories']:
@@ -373,10 +373,9 @@ def config(ctx):
             if not directory['active']:
                 print(f'• {path}')
                 if 'bucket' in directory:
-                    print(f' - bucket: {directory['bucket']}')
+                    print(f'  bucket: {directory['bucket']}')
                 else:
-                    print(f' - bucket: ')
-                print(f'  bucket: {directory['bucket']}')
+                    print(f'  bucket: ')
                 print(f'  subdirs:')
                 for subdir in directory['subdirs']:
                     print(f'   - {subdir}')
