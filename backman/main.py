@@ -327,12 +327,13 @@ def init():
 @click.pass_context
 @click.argument("auth_key_path", nargs=1, required=True)
 def set_auth(ctx, auth_key_path):
+    config = ctx.obj['config']
     if not pathlib.Path(auth_key_path).is_file():
         print(f'{auth_key_path} not found.')
         exit(1)
 
     print(f'\nSetting {auth_key_path} as the authentication key file.')
-    ctx.config['authentication_file'] = auth_key_path
+    config['authentication_file'] = auth_key_path
     with open("backfile.yaml", "w") as file:
         yaml.dump(config, file, default_flow_style=False)
 
