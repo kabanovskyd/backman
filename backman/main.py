@@ -331,7 +331,7 @@ def set_auth(ctx, auth_key_path):
         print(f'{auth_key_path} not found.')
         exit(1)
 
-    print(f'\nSetting {auth_key_path} as the authentication key file.')
+    print(f'\nSet {auth_key_path} as the authentication key file.\n')
     config['authentication_file'] = auth_key_path
     with open("backfile.yaml", "w") as file:
         yaml.dump(config, file, default_flow_style=False)
