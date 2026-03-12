@@ -295,10 +295,22 @@ def include(ctx, dirs):
 
 
 @cli.command()
-@click.pass_context
 def init():
-    with open("backfile.yaml", "r") as file:
-        print(file)
+    print()
+    if pathlib.Path('./backfile.yaml').is_file():
+        print('WARNING: you are about to overwrite the existing Backfile - this will delete ALL data about currently tracked directories!')
+        opt = prompt_choice('Are you sure you would like to continue? (y/n): ', ['yes', 'y', 'no', 'n'])
+        if opt not in ['yes', 'y']:
+            exit(0)
+
+    print('Creating Backfile...')
+    config = {}
+    config['authentication_file'] = ''
+    config['directories'] = {}
+    with open("backfile.yaml", "w") as file:
+        yaml.dump(config, f, default_flow_style=False)
+
+    print('Backfile created! Please run `backman set-auth [authentication_file]` to provide backman with a valid JSON authentication key file for GCP access.')
 
 
 @cli.command()
