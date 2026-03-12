@@ -155,12 +155,11 @@ def cli(ctx):
     with open('backfile.yaml', 'r') as file:
         config = yaml.safe_load(file)
 
+    ctx.obj["config"] = config
     if ctx.invoked_subcommand == "set-auth":
         return
 
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "./credentials.json"
-    ctx.ensure_object(dict)
-    ctx.obj["config"] = config
     ctx.obj["directories"] = config['directories']
     ctx.obj["client"] = storage.Client()
 
