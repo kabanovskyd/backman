@@ -3,7 +3,7 @@ authentication_file: ./auth_file.json
 
 # directories list
 directories:
-  - path: /data/slidetag
+  /data/slidetag:
     bucket: sodium_archive_manual
     active: true
     subdirs:

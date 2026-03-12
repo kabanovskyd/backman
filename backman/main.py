@@ -163,12 +163,11 @@ def status(ctx):
     target_directories = ctx.obj["directories"]
     config = ctx.obj["config"]
     client = ctx.obj["client"]
-    for directory in target_directories:
-        if directory['active'] == 'false':
+    for directory in target_directories.keys():
+        if target_directories[directory]['active'] == 'false':
             continue
-        target_bucket = directory['bucket']
-        target_subdirs = directory['subdirs']
-        directory = directory['path']
+        target_bucket = target_directories[directory]['bucket']
+        target_subdirs = target_directories[directory]['subdirs']
         for subdir in target_subdirs:
             items = collect_files(directory, subdir)
             rel_directory = directory.split('/')[-1]
@@ -245,9 +244,7 @@ def update(ctx):
 @click.argument("dirs", nargs=-1, required=True)
 def exclude(ctx, dirs):
     """Exclude specified directories from future backups, but keep them in the config file."""
-    target_directories = ctx.obj["directories"]
     config = ctx.obj["config"]
-    client = ctx.obj["client"]
 
     if any(directory not in config['directories'] for directory in dirs):
         print('The following directories are not present in the backfile:')
@@ -256,15 +253,14 @@ def exclude(ctx, dirs):
                 print(f'- {directory}')
 
     for directory in dirs:
-        path = directory['path']
-        config['directories'][path]['active'] = 'false'
+        config['directories'][directory]['active'] = 'false'
     
     with open("config.yaml", "w") as f:
         yaml.dump(config, f, default_flow_style=False)
     
     print('The following directories have been excluded from tracking:')
     for dir in dirs:
-        print('- {dir}')
+        print(f'- {dir}')
 
 
 if __name__ == "__main__":
