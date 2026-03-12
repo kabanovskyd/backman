@@ -146,6 +146,12 @@ print("""
 @click.pass_context
 def cli(ctx):
     """backman — automated lab data backup tool."""
+    ctx.ensure_object(dict)
+    
+    # skip config loading if init is being called
+    if ctx.invoked_subcommand == "init":
+        return
+
     with open('backfile.yaml', 'r') as file:
         config = yaml.safe_load(file)
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "./credentials.json"
