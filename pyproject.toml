@@ -1,0 +1,19 @@
+[project]
+name = "backman"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "click>=8.3.1",
+    "google-cloud-storage>=3.9.0",
+    "pathlib>=1.0.1",
+    "pyyaml>=6.0.3",
+]
+
+[project.scripts]
+backman = "backman.main:cli"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

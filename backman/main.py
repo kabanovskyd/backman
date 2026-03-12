@@ -4,7 +4,6 @@ import yaml
 import os
 import pathlib
 import hashlib
-import sys
 import click
 
 from google.cloud import storage
@@ -201,7 +200,7 @@ def status(ctx):
         print()
         exit(0)
     else:
-        print('Everything up to date.\n')
+        print('Everything up to date!\n')
         exit(0)
 
 
@@ -230,7 +229,7 @@ def update(ctx):
                 path = item['path']
                 rel_path = path.split(directory)[-1]
                 bucket = f'{rel_directory}{rel_path}'
-                print(bucket)
+                print(f'Backing up {bucket}...')
                 bucket_handle = client.bucket(target_bucket)
                 upload(bucket_handle, item['path'], bucket)
 
