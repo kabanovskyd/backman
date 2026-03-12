@@ -312,7 +312,7 @@ def config(ctx):
         for directory in config['directories']:
             directory = config['directories'][directory]
             if directory['active']:
-                print(f'* {directory['path']}')
+                print(f'* {directory}')
                 print(f' - bucket: {directory['bucket']}')
                 print(f' - subdirs:')
                 for subdir in directory['subdirs']:
@@ -322,7 +322,7 @@ def config(ctx):
         for directory in config['directories']:
             directory = config['directories'][directory]
             if not directory['active']:
-                print(f'* {directory['path']}')
+                print(f'* {directory}')
                 print(f' - bucket: {directory['bucket']}')
                 print(f' - subdirs:')
                 for subdir in directory['subdirs']:
