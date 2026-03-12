@@ -164,7 +164,7 @@ def status(ctx):
     config = ctx.obj["config"]
     client = ctx.obj["client"]
     for directory in target_directories.keys():
-        if target_directories[directory]['active'] == 'false':
+        if not target_directories[directory]['active']:
             continue
         target_bucket = target_directories[directory]['bucket']
         target_subdirs = target_directories[directory]['subdirs']
@@ -255,7 +255,7 @@ def exclude(ctx, dirs):
         exit(1)
 
     for directory in dirs:
-        config['directories'][directory]['active'] = 'false'
+        config['directories'][directory]['active'] = False
     
     with open("backman.yaml", "w") as f:
         yaml.dump(config, f, default_flow_style=False)
