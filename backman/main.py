@@ -305,14 +305,15 @@ def init():
 @click.pass_context
 def config(ctx):
     config = ctx.obj['config']
-    print('============= BACKFILE SUMMARY =============')
+    print('\n============= BACKFILE SUMMARY =============')
     print(f'Authentication file: {config['authentication_file']}')
     if any(config['directories'][directory]['active'] for directory in config['directories']):
         print(f'\nTracked directories:')
         for directory in config['directories']:
+            path = directory
             directory = config['directories'][directory]
             if directory['active']:
-                print(f'* {directory}')
+                print(f'* {path}')
                 print(f' - bucket: {directory['bucket']}')
                 print(f' - subdirs:')
                 for subdir in directory['subdirs']:
@@ -320,9 +321,10 @@ def config(ctx):
     if not all(config['directories'][directory]['active'] for directory in config['directories']):
         print(f'\nUntracked directories:')
         for directory in config['directories']:
+            path = directory
             directory = config['directories'][directory]
             if not directory['active']:
-                print(f'* {directory}')
+                print(f'* {path}')
                 print(f' - bucket: {directory['bucket']}')
                 print(f' - subdirs:')
                 for subdir in directory['subdirs']:
