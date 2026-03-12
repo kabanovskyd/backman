@@ -251,6 +251,8 @@ def exclude(ctx, dirs):
         for directory in dirs:
             if directory not in config['directories']:
                 print(f'- {directory}')
+        print('Please make sure all listed directories are present in the backfile and re-run the command.')
+        exit(1)
 
     for directory in dirs:
         config['directories'][directory]['active'] = 'false'
