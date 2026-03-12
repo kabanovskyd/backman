@@ -7,6 +7,7 @@ else
     echo "uv installed at $(which uv)"
 fi
 
+uv venv
 uv pip install -e .
 backman_path=$(find . -name "backman" -type f)
 export PATH=$PWD/.venv/bin:$PATH
