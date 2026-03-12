@@ -266,6 +266,32 @@ def exclude(ctx, dirs):
     print()
 
 
+@cli.command()
+@click.pass_context
+@click.argument("dirs", nargs=-1, required=True)
+def include(ctx, dirs):
+    config = ctx.obj["config"]
+
+    if any(directory not in config['directories'] for directory in dirs):
+        print('\nThe following directories are not present in the backfile:\n')
+        for directory in dirs:
+            if directory not in config['directories']:
+                print(f'- {directory}')
+        print('\nPlease make sure all listed directories are present in the backfile and re-run the command.\n')
+        exit(1)
+
+    for directory in dirs:
+        config['directories'][directory]['active'] = True
+    
+    with open("backfile.yaml", "w") as f:
+        yaml.dump(config, f, default_flow_style=False)
+    
+    print('\nThe following directories have been included in tracking:\n')
+    for dir in dirs:
+        print(f'- {dir}')
+    print()
+
+
 if __name__ == "__main__":
     cli()
 
