@@ -168,7 +168,7 @@ def status(ctx):
             continue
         target_bucket = directory['bucket']
         directory = directory['path']
-        target_subdirs = config['target_dirs'][directory]
+        target_subdirs = config['directories'][directory]
         for subdir in target_subdirs:
             items = collect_files(directory, subdir)
             rel_directory = directory.split('/')[-1]
