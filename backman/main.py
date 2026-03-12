@@ -296,9 +296,35 @@ def include(ctx, dirs):
 
 @cli.command()
 @click.pass_context
-def config():
+def init():
     with open("backfile.yaml", "r") as file:
         print(file)
+
+
+@cli.command()
+@click.pass_context
+def config(ctx):
+    config = ctx.obj['config']
+    print('============= BACKFILE SUMMARY =============')
+    print(f'Authentication file: {config['authentication_file']}')
+    if any(directory['active'] for directory in config['directories']):
+        print(f'\nTracked directories:')
+        for directory in config['directories']:
+            if directory['active']:
+                print(f'* {directory['path']}')
+                print(f' - bucket: {directory['bucket']}')
+                print(f' - subdirs:')
+                for subdir in directory['subdirs']:
+                    print(f'  - {subdir}')
+    if not all(directory['active'] for directory in config['directories']):
+        print(f'\nUntracked directories:')
+        for directory in config['directories']:
+            if not directory['active']:
+                print(f'* {directory['path']}')
+                print(f' - bucket: {directory['bucket']}')
+                print(f' - subdirs:')
+                for subdir in directory['subdirs']:
+                    print(f'  - {subdir}')
 
 if __name__ == "__main__":
     cli()
