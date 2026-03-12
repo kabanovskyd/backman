@@ -423,6 +423,10 @@ def add(ctx, dirs):
                         added_dirs[directory].append(subdirectory)
                     else:
                         added_dirs[directory] = [subdirectory]
+            else:
+                config['directories'][directory] = [subdirectory]
+                added_dirs[directory] = [subdirectory]
+
         else:
             if not pathlib.Path(dir).is_dir():
                 print(f'{dir} is not a directory!')
