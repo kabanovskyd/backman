@@ -308,7 +308,7 @@ def init():
     config['authentication_file'] = ''
     config['directories'] = {}
     with open("backfile.yaml", "w") as file:
-        yaml.dump(config, f, default_flow_style=False)
+        yaml.dump(config, file, default_flow_style=False)
 
     print('Backfile created! Please run `backman set-auth [authentication_file]` to provide backman with a valid JSON authentication key file for GCP access.')
 
