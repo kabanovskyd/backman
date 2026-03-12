@@ -257,6 +257,7 @@ def exclude(ctx, dirs):
     for directory in dirs:
         config['directories'][directory]['active'] = 'false'
     
+    print(config)
     with open("config.yaml", "w") as f:
         yaml.dump(config, f, default_flow_style=False)
     
