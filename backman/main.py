@@ -257,7 +257,6 @@ def exclude(ctx, dirs):
     for directory in dirs:
         config['directories'][directory]['active'] = 'false'
     
-    print(config)
     with open("backman.yaml", "w") as f:
         yaml.dump(config, f, default_flow_style=False)
     
