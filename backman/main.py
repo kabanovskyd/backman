@@ -165,7 +165,6 @@ def status(ctx):
     config = ctx.obj["config"]
     client = ctx.obj["client"]
     target_bucket = ctx.obj["target_bucket"]
-    print(target_directories)
     for directory in target_directories.keys():
         target_subdirs = config['target_dirs'][directory]
         for subdir in target_subdirs:
@@ -191,7 +190,10 @@ def status(ctx):
                         print(f'  • {modified} modified')
                     if missing > 0:
                         print(f'  • {missing} missing')
-
+            for dir in upload_dict:
+                print(f"{dir}:")
+                for file in upload_dict[dir]:
+                    print(f"- {file['path']} ({file['reason']})")
         else:
             for dir in upload_dict:
                 print(f"{dir}:")
