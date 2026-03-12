@@ -160,8 +160,16 @@ def cli(ctx):
         return
 
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "./credentials.json"
+    if 'directories' not in config:
+        print('No directories specified for tracking! Run `backman add [directories]` to track and update directories.')
+        exit(1)
+    
     ctx.obj["directories"] = config['directories']
-    ctx.obj["client"] = storage.Client()
+    try:
+        ctx.obj["client"] = storage.Client()
+    except Exception as e:
+        print(f"Could not establish a connection to GCP: {e}")
+        exit(1)
 
 
 @cli.command()
@@ -365,6 +373,79 @@ def config(ctx):
                 print(f'  subdirs:')
                 for subdir in directory['subdirs']:
                     print(f'   - {subdir}')
+    print()
+
+
+@cli.command()
+@click.pass_context
+@click.argument("dirs", nargs=-1, required=True)
+def add(ctx, dirs):
+    config = ctx.obj["config"]
+
+    if dirs[0] == '--file':
+        dir_file = dirs[1]
+        if len(dirs) > 2:
+            print('Usage: backman add --file [file_with_directories]')
+            exit(1)
+        if not pathlib.Path(dir_file).is_file():
+            print(f'File {dir_file} does not exist!')
+            exit(1)
+        
+        dirs = []
+        with open(dir_file, 'r') as file:
+            for line in file:
+                dirs.append(line)
+
+    added_dirs = {}
+    for dir in dirs:
+        if ':' in dir:
+            if len(dir.split(':')) != 2:
+                print('Please provide subdirectories as a list of [directory]:[subdirectory] pairs')
+                exit(1)
+            directory, subdirectory = dir.split(':')
+            if not pathlib.Path(directory).is_dir():
+                print(f'{directory} is not a directory!')
+                exit(1)
+            if subdirectory == '*':
+                #TODO: implement globbing logic
+                pass
+            if not (pathlib.Path(directory) / subdirectory).is_dir():
+                print(f'{subdirectory} is not a directory!')
+                exit(1)
+            if directory in config['directories']:
+                if not 'subdirs' in config['directories'][directory]:
+                    config['directories'][directory]['subdirs'] = []
+                if len(config['directories'][directory]) == 0:
+                    config['directories'][directory]['subdirs'] = subdirectory
+                else:
+                    config['directories'][directory]['subdirs'].append(subdirectory)
+                    if directory in added_dirs:
+                        added_dirs[directory].append(subdirectory)
+                    else:
+                        added_dirs[directory] = [subdirectory]
+        else:
+            if not pathlib.Path(dir).is_dir():
+                print(f'{dir} is not a directory!')
+                exit(1)
+            if dir in config['directories']:
+                print(f'{dir} is already being tracked!')
+                exit(1)
+            config['directories'][directory] = {}
+            if not directory in added_dirs:
+                added_dirs[dir] = []
+
+    for directory in added_dirs:
+        config['directories'][directory]['active'] = True
+    
+    with open("backfile.yaml", "w") as f:
+        yaml.dump(config, f, default_flow_style=False)
+    
+    print('\nThe following directories have been added to tracking:\n')
+    for dir in added_dirs:
+        print(f'{dir}')
+        if len(added_dirs[dir]) > 0:
+            for subdir in added_dirs[dir]:
+                print(f'  - {subdir}')
     print()
 
 
