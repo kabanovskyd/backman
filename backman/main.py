@@ -146,13 +146,12 @@ print("""
 @click.pass_context
 def cli(ctx):
     """backman — automated lab data backup tool."""
-    with open('config.yaml', 'r') as file:
+    with open('backfile.yaml', 'r') as file:
         config = yaml.safe_load(file)
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "./credentials.json"
     ctx.ensure_object(dict)
     ctx.obj["config"] = config
-    ctx.obj["target_dirs"] = config['target_dirs']
-    ctx.obj["target_bucket"] = config['target_bucket']
+    ctx.obj["directories"] = config['directories']
     ctx.obj["client"] = storage.Client()
 
 
@@ -161,11 +160,14 @@ def cli(ctx):
 def status(ctx):
     upload_dict = {}
     total_items = 0
-    target_directories = ctx.obj["target_dirs"]
+    target_directories = ctx.obj["directories"]
     config = ctx.obj["config"]
     client = ctx.obj["client"]
-    target_bucket = ctx.obj["target_bucket"]
-    for directory in target_directories.keys():
+    for directory in target_directories:
+        if directory['active'] == 'false':
+            continue
+        target_bucket = directory['bucket']
+        directory = directory['path']
         target_subdirs = config['target_dirs'][directory]
         for subdir in target_subdirs:
             items = collect_files(directory, subdir)
@@ -241,9 +243,27 @@ def update(ctx):
 @cli.command()
 @click.pass_context
 @click.argument("dirs", nargs=-1, required=True)
-def exclude(dirs):
+def exclude(ctx, dirs):
     """Exclude specified directories from future backups, but keep them in the config file."""
-    pass
+    target_directories = ctx.obj["directories"]
+    config = ctx.obj["config"]
+    client = ctx.obj["client"]
+
+    if any(directory not in config['directories'] for directory in dirs):
+        print('The following directories are not present in the backfile:')
+        for directory in dirs:
+            if directory not in config['directories']:
+                print(f'- {directory}')
+
+    for directory in dirs:
+        config['directories'][directory]['active'] = 'false'
+    
+    with open("config.yaml", "w") as f:
+        yaml.dump(config, f, default_flow_style=False)
+    
+    print('The following directories have been excluded from tracking:')
+    for dir in dirs:
+        print('- {dir}')
 
 
 if __name__ == "__main__":
