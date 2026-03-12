@@ -324,11 +324,11 @@ def config(ctx):
             path = directory
             directory = config['directories'][directory]
             if not directory['active']:
-                print(f'* {path}')
-                print(f' - bucket: {directory['bucket']}')
-                print(f' - subdirs:')
+                print(f'• {path}')
+                print(f'  bucket: {directory['bucket']}')
+                print(f'  subdirs:')
                 for subdir in directory['subdirs']:
-                    print(f'  - {subdir}')
+                    print(f'   - {subdir}')
     print()
 
 
