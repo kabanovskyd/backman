@@ -190,10 +190,11 @@ def status(ctx):
                         print(f'  • {modified} modified')
                     if missing > 0:
                         print(f'  • {missing} missing')
-            for dir in upload_dict:
-                print(f"{dir}:")
-                for file in upload_dict[dir]:
-                    print(f"- {file['path']} ({file['reason']})")
+            else:
+                for dir in upload_dict:
+                    print(f"{dir}:")
+                    for file in upload_dict[dir]:
+                        print(f"- {file['path']} ({file['reason']})")
         else:
             for dir in upload_dict:
                 print(f"{dir}:")
