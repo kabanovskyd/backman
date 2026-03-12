@@ -424,7 +424,7 @@ def add(ctx, dirs):
                     else:
                         added_dirs[directory] = [subdirectory]
             else:
-                config['directories'][directory] = [subdirectory]
+                config['directories'][directory] = {'subdirs': [subdirectory]}
                 added_dirs[directory] = [subdirectory]
 
         else:
