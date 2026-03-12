@@ -358,7 +358,10 @@ def config(ctx):
             directory = config['directories'][directory]
             if directory['active']:
                 print(f'* {path}')
-                print(f' - bucket: {directory['bucket']}')
+                if 'bucket' in directory:
+                    print(f' - bucket: {directory['bucket']}')
+                else:
+                    print(f' - bucket: ')
                 print(f' - subdirs:')
                 for subdir in directory['subdirs']:
                     print(f'  - {subdir}')
@@ -369,6 +372,10 @@ def config(ctx):
             directory = config['directories'][directory]
             if not directory['active']:
                 print(f'• {path}')
+                if 'bucket' in directory:
+                    print(f' - bucket: {directory['bucket']}')
+                else:
+                    print(f' - bucket: ')
                 print(f'  bucket: {directory['bucket']}')
                 print(f'  subdirs:')
                 for subdir in directory['subdirs']:
