@@ -107,8 +107,13 @@ def collect_files(root: str, subdir: str) -> list[dict]:
     results = []
     # print(f'Processing directory: {root}/{subdir}...')
     def _walk(path):
-        with os.scandir(path) as it:
-            for entry in it:
+        try:
+            entries = list(os.scandir(path))
+        except PermissionError:
+            print(f"Warning: permission denied, skipping {path}")
+            return
+        for entry in entries:
+            try:
                 if entry.is_dir(follow_symlinks=False):
                     if entry.name not in EXCLUDE_DIRS:
                         _walk(entry.path)
@@ -121,6 +126,8 @@ def collect_files(root: str, subdir: str) -> list[dict]:
                             "size": stat.st_size,
                             "mtime": stat.st_mtime,
                         })
+            except PermissionError:
+                print(f"Warning: permission denied, skipping {entry.path}")
 
     path = pathlib.Path(root) / subdir
     _walk(path)
