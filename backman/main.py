@@ -12,7 +12,7 @@ from google.cloud import storage
 EXCLUDE_EXTENSIONS = {
     ".pyc",
     ".pyo",
-    ".json",
+    #".json",
     ".env",
     ".bam",
     ".swp",   # vim swap files
