@@ -252,9 +252,9 @@ def update(ctx):
             for item in to_upload:
                 print(f'- {item['path']}')
 
-            opt = prompt_choice('Proceed with backup? (y/n): ', ['yes', 'y', 'no', 'n'])
-            if opt in ['no', 'n']:
-                exit(0)
+            #opt = prompt_choice('Proceed with backup? (y/n): ', ['yes', 'y', 'no', 'n'])
+            #if opt in ['no', 'n']:
+            #    exit(0)
 
             for item in to_upload:
                 path = item['path']
