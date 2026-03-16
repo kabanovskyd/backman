@@ -59,6 +59,7 @@ def upload_parallel(
         remote_key = rel_directory + rel_path
         stat = os.stat(local_path)
         blob = bucket.blob(remote_key)
+        blob.chunk_size = 8 * 1024 * 1024  # 8 MB chunks to limit per-thread memory use
         blob.metadata = {
             "source_mtime": str(stat.st_mtime),
             "source_size": str(stat.st_size),
