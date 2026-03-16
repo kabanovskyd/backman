@@ -585,6 +585,8 @@ def add(ctx, dirs):
 
     for directory in added_dirs:
         config['directories'][directory]['active'] = True
+        if 'subdirs' not in config['directories'][directory]:
+            config['directories'][directory]['subdirs'] = []
     
     with open("backfile.yaml", "w") as f:
         yaml.dump(config, f, default_flow_style=False)
