@@ -76,7 +76,7 @@ def upload_parallel(
 
     for (local_path, blob), result in zip(file_blob_pairs, results):
         if isinstance(result, Exception):
-            print(f"  ERROR {local_path}: {result}")
+            print(f"  ERROR {local_path}: {type(result).__name__}: {result}")
         else:
             print(f"  Uploaded {blob.name}")
 
