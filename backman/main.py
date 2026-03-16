@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
 
+import sys
+import json
+import shlex
+import subprocess
+import tempfile
 import yaml
 import os
 import pathlib
@@ -7,6 +12,7 @@ import hashlib
 import click
 
 from google.cloud import storage
+from google.cloud.storage import transfer_manager
 
 
 EXCLUDE_EXTENSIONS = {
@@ -39,22 +45,130 @@ def prompt_choice(prompt, valid_options):
         print(f"Invalid input. Valid options are: {', '.join(valid_options)}")
 
 
-def upload(
+def upload_parallel(
     bucket: storage.Bucket,
-    local_path: str,
-    remote_path: str
+    items: list[dict],
+    directory: str,
+    rel_directory: str,
+    max_workers: int,
 ) -> None:
-    stat = os.stat(local_path)
-    if not bucket.exists():
-        print(f'Bucket {bucket} does not exist')
-        exit(1)
-    blob = bucket.blob(remote_path)
-    blob.metadata = {
-        "source_mtime": str(stat.st_mtime),
-        "source_size": str(stat.st_size),
-        "source_path": local_path,
-    }
-    blob.upload_from_filename(local_path)
+    """Upload a list of items to GCS in parallel using transfer_manager threads."""
+    file_blob_pairs = []
+    for item in items:
+        local_path = item["path"]
+        rel_path = local_path.split(directory)[-1]
+        remote_key = rel_directory + rel_path
+
+        stat = os.stat(local_path)
+        blob = bucket.blob(remote_key)
+        blob.metadata = {
+            "source_mtime": str(stat.st_mtime),
+            "source_size": str(stat.st_size),
+            "source_path": local_path,
+        }
+        file_blob_pairs.append((local_path, blob))
+
+    results = transfer_manager.upload_many(
+        file_blob_pairs,
+        worker_type=transfer_manager.THREAD,
+        max_workers=max_workers,
+    )
+
+    for (local_path, blob), result in zip(file_blob_pairs, results):
+        if isinstance(result, Exception):
+            print(f"  ERROR {local_path}: {result}")
+        else:
+            print(f"  Uploaded {blob.name}")
+
+
+def submit_uger_job(
+    bucket_name: str,
+    items: list[dict],
+    directory: str,
+    rel_directory: str,
+    jobs: int,
+    credentials_path: str,
+) -> None:
+    """Write a JSON manifest and qsub array job script, then submit via qsub."""
+    work_dir = tempfile.mkdtemp(prefix="backman_uger_")
+    os.makedirs(os.path.join(work_dir, "logs"), exist_ok=True)
+
+    manifest = []
+    for item in items:
+        local_path = item["path"]
+        rel_path = local_path.split(directory)[-1]
+        remote_key = rel_directory + rel_path
+        stat = os.stat(local_path)
+        manifest.append({
+            "local_path": local_path,
+            "remote_key": remote_key,
+            "source_mtime": str(stat.st_mtime),
+            "source_size": str(stat.st_size),
+            "bucket": bucket_name,
+        })
+
+    manifest_path = os.path.join(work_dir, "manifest.json")
+    with open(manifest_path, "w") as f:
+        json.dump(manifest, f, indent=2)
+
+    helper_path = os.path.join(work_dir, "upload_task.py")
+    helper_script = f"""\
+#!{sys.executable}
+import json, os, sys
+from google.cloud import storage
+
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = {repr(credentials_path)}
+manifest_path = {repr(manifest_path)}
+task_index = int(os.environ["SGE_TASK_ID"]) - 1  # SGE_TASK_ID is 1-based
+
+with open(manifest_path) as f:
+    manifest = json.load(f)
+
+if task_index >= len(manifest):
+    sys.exit(0)
+
+task = manifest[task_index]
+client = storage.Client()
+bucket = client.bucket(task["bucket"])
+blob = bucket.blob(task["remote_key"])
+blob.metadata = {{
+    "source_mtime": task["source_mtime"],
+    "source_size": task["source_size"],
+    "source_path": task["local_path"],
+}}
+blob.upload_from_filename(task["local_path"])
+print(f"Uploaded {{task['local_path']}} -> gs://{{task['bucket']}}/{{task['remote_key']}}")
+"""
+    with open(helper_path, "w") as f:
+        f.write(helper_script)
+    os.chmod(helper_path, 0o755)
+
+    n_tasks = len(manifest)
+    job_script_path = os.path.join(work_dir, "backman_upload.sh")
+    log_dir = os.path.join(work_dir, "logs")
+    job_script = f"""\
+#!/bin/bash
+#$ -N backman_upload
+#$ -t 1-{n_tasks}
+#$ -tc {jobs}
+#$ -cwd
+#$ -j y
+#$ -o {log_dir}/
+
+{shlex.quote(sys.executable)} {shlex.quote(helper_path)}
+"""
+    with open(job_script_path, "w") as f:
+        f.write(job_script)
+
+    print(f"  Manifest: {manifest_path}")
+    print(f"  Job script: {job_script_path}")
+    print(f"  Submitting {n_tasks} task(s), max {jobs} concurrent...")
+
+    result = subprocess.run(["qsub", job_script_path], capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"  qsub failed:\n{result.stderr}")
+        sys.exit(1)
+    print(f"  {result.stdout.strip()}")
 
 
 def find_files_to_upload(
@@ -235,34 +349,51 @@ def status(ctx):
 
 @cli.command()
 @click.pass_context
-def update(ctx):
+@click.option("--jobs", default=4, show_default=True, help="Parallel upload workers (local) or max concurrent UGER tasks.")
+@click.option("--uger", is_flag=True, default=False, help="Submit uploads as a UGER qsub array job instead of uploading directly.")
+def update(ctx, jobs, uger):
     """Run the backup on directories specified in the config file, updating any out-of-date files."""
     target_directories = ctx.obj["directories"]
     config = ctx.obj["config"]
     client = ctx.obj["client"]
+    credentials_path = os.path.abspath(config.get("authentication_file", "./credentials.json"))
+
     for directory in target_directories.keys():
-        target_subdirs = target_directories[directory]['subdirs']
-        target_bucket = target_directories[directory]['bucket']
+        if not target_directories[directory].get("active", True):
+            continue
+        target_subdirs = target_directories[directory]["subdirs"]
+        target_bucket = target_directories[directory]["bucket"]
+        rel_directory = directory.split("/")[-1]
+        bucket_handle = client.bucket(target_bucket)
+
         for subdir in target_subdirs:
             items = collect_files(directory, subdir)
-            rel_directory = directory.split('/')[-1]
             gcp_items = retrieve_gcp_files(client, target_bucket, rel_directory, subdir)
             to_upload = find_files_to_upload(items, gcp_items, f"{rel_directory}/{subdir}/", directory)
 
-            for item in to_upload:
-                print(f'- {item['path']}')
+            if not to_upload:
+                print(f"[{subdir}] Nothing to upload.")
+                continue
 
-            #opt = prompt_choice('Proceed with backup? (y/n): ', ['yes', 'y', 'no', 'n'])
-            #if opt in ['no', 'n']:
-            #    exit(0)
+            print(f"[{subdir}] {len(to_upload)} file(s) to upload.")
 
-            for item in to_upload:
-                path = item['path']
-                rel_path = path.split(directory)[-1]
-                bucket = f'{rel_directory}{rel_path}'
-                print(f'Backing up {bucket}...')
-                bucket_handle = client.bucket(target_bucket)
-                upload(bucket_handle, item['path'], bucket)
+            if uger:
+                submit_uger_job(
+                    bucket_name=target_bucket,
+                    items=to_upload,
+                    directory=directory,
+                    rel_directory=rel_directory,
+                    jobs=jobs,
+                    credentials_path=credentials_path,
+                )
+            else:
+                upload_parallel(
+                    bucket=bucket_handle,
+                    items=to_upload,
+                    directory=directory,
+                    rel_directory=rel_directory,
+                    max_workers=jobs,
+                )
 
 
 @cli.command()
