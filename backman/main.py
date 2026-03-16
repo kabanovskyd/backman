@@ -572,6 +572,7 @@ def add(ctx, dirs):
                 added_dirs[directory] = [subdirectory]
 
         else:
+            directory = dir[:-1] if dir.endswith('/') else dir
             if not pathlib.Path(dir).is_dir():
                 print(f'{dir} is not a directory!')
                 exit(1)
