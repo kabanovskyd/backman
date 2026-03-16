@@ -10,9 +10,9 @@ import os
 import pathlib
 import hashlib
 import click
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from google.cloud import storage
-from google.cloud.storage import transfer_manager
 
 
 EXCLUDE_EXTENSIONS = {
@@ -53,12 +53,10 @@ def upload_parallel(
     max_workers: int,
 ) -> None:
     """Upload a list of items to GCS in parallel using transfer_manager threads."""
-    file_blob_pairs = []
-    for item in items:
+    def _upload_one(item):
         local_path = item["path"]
         rel_path = local_path.split(directory)[-1]
         remote_key = rel_directory + rel_path
-
         stat = os.stat(local_path)
         blob = bucket.blob(remote_key)
         blob.metadata = {
@@ -66,19 +64,18 @@ def upload_parallel(
             "source_size": str(stat.st_size),
             "source_path": local_path,
         }
-        file_blob_pairs.append((local_path, blob))
+        blob.upload_from_filename(local_path)
+        return local_path, blob.name
 
-    results = transfer_manager.upload_many(
-        file_blob_pairs,
-        worker_type=transfer_manager.THREAD,
-        max_workers=max_workers,
-    )
-
-    for (local_path, blob), result in zip(file_blob_pairs, results):
-        if isinstance(result, Exception):
-            print(f"  ERROR {local_path}: {type(result).__name__}: {result}")
-        else:
-            print(f"  Uploaded {blob.name}")
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_upload_one, item): item for item in items}
+        for future in as_completed(futures):
+            try:
+                local_path, remote_name = future.result()
+                print(f"  Uploaded {remote_name}")
+            except Exception as e:
+                item = futures[future]
+                print(f"  ERROR {item['path']}: {type(e).__name__}: {e}")
 
 
 def submit_uger_job(
