@@ -56,44 +56,39 @@ def upload_parallel(
     max_workers: int,
     client=None,
 ) -> None:
-    """Upload items to GCS using the Python client library.
-    Large files are uploaded with limited concurrency to avoid memory exhaustion."""
-
-    _client = client or storage.Client()
-    bucket = _client.bucket(bucket_name)
+    """Upload items to GCS using gcloud storage cp subprocesses."""
 
     def _upload_one(item):
         local_path = item["path"]
         rel_path = local_path.split(directory)[-1]
-        remote_key = f"{rel_directory}{rel_path}"
-        blob = bucket.blob(remote_key)
-        stat = os.stat(local_path)
-        blob.metadata = {
-            "source_mtime": str(stat.st_mtime),
-            "source_size": str(stat.st_size),
-            "source_path": local_path,
-        }
-        blob.upload_from_filename(local_path)
-        return f"gs://{bucket_name}/{remote_key}"
+        remote_uri = f"gs://{bucket_name}/{rel_directory}{rel_path}"
+        result = subprocess.run(
+            ["gcloud", "storage", "cp", local_path, remote_uri],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr.strip() or result.stdout.strip())
+        return remote_uri
+
+    small = [f for f in items if f["size"] < LARGE_FILE_THRESHOLD]
+    large = [f for f in items if f["size"] >= LARGE_FILE_THRESHOLD]
 
     def _run_pool(file_list, workers):
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = {executor.submit(_upload_one, item): item for item in file_list}
             for future in as_completed(futures):
+                item = futures[future]
                 try:
                     remote_uri = future.result()
                     print(f"  Uploaded {remote_uri}", flush=True)
                 except Exception as e:
-                    item = futures[future]
                     print(f"  ERROR {item['path']}: {e}", flush=True)
-
-    small = [f for f in items if f["size"] < LARGE_FILE_THRESHOLD]
-    large = [f for f in items if f["size"] >= LARGE_FILE_THRESHOLD]
 
     if small:
         _run_pool(small, max_workers)
     if large:
-        print(f"  Uploading {len(large)} large file(s) one at a time to limit memory usage...", flush=True)
+        print(f"  Uploading {len(large)} large file(s) one at a time...", flush=True)
         _run_pool(large, 1)
 
 
