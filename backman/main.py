@@ -123,58 +123,49 @@ def submit_uger_job(
 
     helper_path = os.path.join(work_dir, "upload_task.py")
     helper_script = f"""\
-#!{sys.executable}
-import json, os, sys
-from google.cloud import storage
+    #!{sys.executable}
+    import json, os, sys
+    from google.cloud import storage
+    from google.cloud.storage import transfer_manager
 
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = {repr(credentials_path)}
-manifest_path = {repr(manifest_path)}
-task_index = int(os.environ["SGE_TASK_ID"]) - 1  # SGE_TASK_ID is 1-based
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = {repr(credentials_path)}
+    manifest_path = {repr(manifest_path)}
+    task_index = int(os.environ["SGE_TASK_ID"]) - 1
 
-with open(manifest_path) as f:
-    manifest = json.load(f)
+    with open(manifest_path) as f:
+        manifest = json.load(f)
 
-if task_index >= len(manifest):
-    sys.exit(0)
+    if task_index >= len(manifest):
+        sys.exit(0)
 
-task = manifest[task_index]
-client = storage.Client()
-bucket = client.bucket(task["bucket"])
-blob = bucket.blob(task["remote_key"])
-blob.metadata = {{
-    "source_mtime": task["source_mtime"],
-    "source_size": task["source_size"],
-    "source_path": task["local_path"],
-}}
-blob.upload_from_filename(task["local_path"])
-print(f"Uploaded {{task['local_path']}} -> gs://{{task['bucket']}}/{{task['remote_key']}}")
-"""
+    task = manifest[task_index]
+    client = storage.Client()
+    bucket = client.bucket(task["bucket"])
+    blob = bucket.blob(task["remote_key"])
+    blob.content_type = "application/gzip"
+    blob.metadata = {{
+        "source_mtime": task["source_mtime"],
+        "source_size": task["source_size"],
+        "source_path": task["local_path"],
+    }}
+
+    # Use chunked upload instead of upload_from_filename
+    transfer_manager.upload_chunks_concurrently(
+        task["local_path"],
+        blob,
+        chunk_size=256 * 1024 * 1024,  # 256 MB chunks
+        max_workers=4,
+    )
+    print(f"Uploaded {{task['local_path']}} -> gs://{{task['bucket']}}/{{task['remote_key']}}")
+    """
     with open(helper_path, "w") as f:
         f.write(helper_script)
-    os.chmod(helper_path, 0o755)
-
-    n_tasks = len(manifest)
-    job_script_path = os.path.join(work_dir, "backman_upload.sh")
-    log_dir = os.path.join(work_dir, "logs")
-    job_script = f"""\
-#!/bin/bash
-#$ -N backman_upload
-#$ -t 1-{n_tasks}
-#$ -tc {jobs}
-#$ -cwd
-#$ -j y
-#$ -o {log_dir}/
-
-{shlex.quote(sys.executable)} {shlex.quote(helper_path)}
-"""
-    with open(job_script_path, "w") as f:
-        f.write(job_script)
 
     print(f"  Manifest: {manifest_path}")
-    print(f"  Job script: {job_script_path}")
-    print(f"  Submitting {n_tasks} task(s), max {jobs} concurrent...")
+    print(f"  Job script: {helper_path}")
+    print(f"  Submitting task(s), max {jobs} concurrent...")
 
-    result = subprocess.run(["qsub", job_script_path], capture_output=True, text=True)
+    result = subprocess.run(["qsub", helper_path], capture_output=True, text=True)
     if result.returncode != 0:
         print(f"  qsub failed:\n{result.stderr}")
         sys.exit(1)
