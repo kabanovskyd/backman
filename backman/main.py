@@ -45,49 +45,51 @@ def prompt_choice(prompt, valid_options):
         print(f"Invalid input. Valid options are: {', '.join(valid_options)}")
 
 
-LARGE_FILE_THRESHOLD = 1 * 1024 * 1024 * 1024  # 1 GB
+LARGE_FILE_THRESHOLD = 256 * 1024 * 1024
 
 
-def upload_parallel(
-    bucket_name: str,
-    items: list[dict],
-    directory: str,
-    rel_directory: str,
-    max_workers: int,
-    client=None,
-) -> None:
-    """Upload items to GCS using transfer_manager."""
+def upload_parallel(bucket_name, items, directory, rel_directory, max_workers, client=None):
     bucket = client.bucket(bucket_name)
 
     small = [f for f in items if f["size"] < LARGE_FILE_THRESHOLD]
     large = [f for f in items if f["size"] >= LARGE_FILE_THRESHOLD]
 
-    def _run_upload(file_list, workers):
+    # Small files: parallel upload, but cap workers to avoid memory pressure
+    if small:
         file_blob_pairs = []
-        for item in file_list:
-            local_path = item["path"]
-            rel_path = local_path.split(directory)[-1]
+        for item in small:
+            rel_path = item["path"].split(directory)[-1]
             remote_key = f"{rel_directory}{rel_path}"
-            file_blob_pairs.append((local_path, bucket.blob(remote_key)))
+            file_blob_pairs.append((item["path"], bucket.blob(remote_key)))
 
         results = transfer_manager.upload_many(
             file_blob_pairs,
             worker_type="thread",
-            max_workers=workers,
+            max_workers=min(max_workers, 4),  # cap it
         )
-
         for (local_path, blob), result in zip(file_blob_pairs, results):
             if isinstance(result, Exception):
                 print(f"  ERROR {local_path}: {result}", flush=True)
             else:
                 print(f"  Uploaded gs://{bucket_name}/{blob.name}", flush=True)
 
-    if small:
-        _run_upload(small, max_workers)
+    # Large files: chunked streaming upload, one at a time
     if large:
-        print(f"  Uploading {len(large)} large file(s) one at a time...", flush=True)
-        _run_upload(large, 1)
-
+        print(f"  Uploading {len(large)} large file(s) with chunked streaming...", flush=True)
+        for item in large:
+            rel_path = item["path"].split(directory)[-1]
+            remote_key = f"{rel_directory}{rel_path}"
+            blob = bucket.blob(remote_key)
+            try:
+                transfer_manager.upload_chunks_concurrently(
+                    item["path"],
+                    blob,
+                    chunk_size=256 * 1024 * 1024,  # 256 MB chunks
+                    max_workers=4,
+                )
+                print(f"  Uploaded gs://{bucket_name}/{blob.name}", flush=True)
+            except Exception as e:
+                print(f"  ERROR {item['path']}: {e}", flush=True)
 
 def submit_uger_job(
     bucket_name: str,
