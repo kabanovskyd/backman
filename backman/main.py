@@ -85,7 +85,7 @@ def upload_parallel(bucket_name, items, directory, rel_directory, max_workers, c
                     item["path"],
                     blob,
                     chunk_size=256 * 1024 * 1024,  # 256 MB chunks
-                    max_workers=4,
+                    max_workers=8,
                 )
                 print(f"  Uploaded gs://{bucket_name}/{blob.name}", flush=True)
             except Exception as e:
