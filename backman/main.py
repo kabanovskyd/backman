@@ -54,21 +54,27 @@ def upload_parallel(
     directory: str,
     rel_directory: str,
     max_workers: int,
+    client=None,
 ) -> None:
-    """Upload items to GCS using gcloud storage cp.
+    """Upload items to GCS using the Python client library.
     Large files are uploaded with limited concurrency to avoid memory exhaustion."""
+
+    _client = client or storage.Client()
+    bucket = _client.bucket(bucket_name)
 
     def _upload_one(item):
         local_path = item["path"]
         rel_path = local_path.split(directory)[-1]
-        remote_uri = f"gs://{bucket_name}/{rel_directory}{rel_path}"
-        result = subprocess.run(
-            ["gcloud", "storage", "cp", local_path, remote_uri],
-            capture_output=True, text=True,
-        )
-        if result.returncode != 0:
-            raise RuntimeError(result.stderr.strip())
-        return remote_uri
+        remote_key = f"{rel_directory}{rel_path}"
+        blob = bucket.blob(remote_key)
+        stat = os.stat(local_path)
+        blob.metadata = {
+            "source_mtime": str(stat.st_mtime),
+            "source_size": str(stat.st_size),
+            "source_path": local_path,
+        }
+        blob.upload_from_filename(local_path)
+        return f"gs://{bucket_name}/{remote_key}"
 
     def _run_pool(file_list, workers):
         with ThreadPoolExecutor(max_workers=workers) as executor:
@@ -402,6 +408,7 @@ def update(ctx, jobs, uger):
                     directory=directory,
                     rel_directory=rel_directory,
                     max_workers=jobs,
+                    client=client,
                 )
 
 
