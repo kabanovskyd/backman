@@ -10,9 +10,9 @@ import os
 import pathlib
 import hashlib
 import click
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from google.cloud import storage
+from google.cloud.storage import transfer_manager
 
 
 EXCLUDE_EXTENSIONS = {
@@ -56,40 +56,37 @@ def upload_parallel(
     max_workers: int,
     client=None,
 ) -> None:
-    """Upload items to GCS using gcloud storage cp subprocesses."""
-
-    def _upload_one(item):
-        local_path = item["path"]
-        rel_path = local_path.split(directory)[-1]
-        remote_uri = f"gs://{bucket_name}/{rel_directory}{rel_path}"
-        result = subprocess.run(
-            ["gcloud", "storage", "cp", local_path, remote_uri],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            raise RuntimeError(result.stderr.strip() or result.stdout.strip())
-        return remote_uri
+    """Upload items to GCS using transfer_manager."""
+    bucket = client.bucket(bucket_name)
 
     small = [f for f in items if f["size"] < LARGE_FILE_THRESHOLD]
     large = [f for f in items if f["size"] >= LARGE_FILE_THRESHOLD]
 
-    def _run_pool(file_list, workers):
-        with ThreadPoolExecutor(max_workers=workers) as executor:
-            futures = {executor.submit(_upload_one, item): item for item in file_list}
-            for future in as_completed(futures):
-                item = futures[future]
-                try:
-                    remote_uri = future.result()
-                    print(f"  Uploaded {remote_uri}", flush=True)
-                except Exception as e:
-                    print(f"  ERROR {item['path']}: {e}", flush=True)
+    def _run_upload(file_list, workers):
+        file_blob_pairs = []
+        for item in file_list:
+            local_path = item["path"]
+            rel_path = local_path.split(directory)[-1]
+            remote_key = f"{rel_directory}{rel_path}"
+            file_blob_pairs.append((local_path, bucket.blob(remote_key)))
+
+        results = transfer_manager.upload_many(
+            file_blob_pairs,
+            worker_type="thread",
+            max_workers=workers,
+        )
+
+        for (local_path, blob), result in zip(file_blob_pairs, results):
+            if isinstance(result, Exception):
+                print(f"  ERROR {local_path}: {result}", flush=True)
+            else:
+                print(f"  Uploaded gs://{bucket_name}/{blob.name}", flush=True)
 
     if small:
-        _run_pool(small, max_workers)
+        _run_upload(small, max_workers)
     if large:
         print(f"  Uploading {len(large)} large file(s) one at a time...", flush=True)
-        _run_pool(large, 1)
+        _run_upload(large, 1)
 
 
 def submit_uger_job(
