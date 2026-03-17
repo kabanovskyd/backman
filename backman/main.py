@@ -45,38 +45,50 @@ def prompt_choice(prompt, valid_options):
         print(f"Invalid input. Valid options are: {', '.join(valid_options)}")
 
 
+LARGE_FILE_THRESHOLD = 1 * 1024 * 1024 * 1024  # 1 GB
+
+
 def upload_parallel(
-    bucket: storage.Bucket,
+    bucket_name: str,
     items: list[dict],
     directory: str,
     rel_directory: str,
     max_workers: int,
 ) -> None:
-    """Upload a list of items to GCS in parallel using transfer_manager threads."""
+    """Upload items to GCS using gcloud storage cp.
+    Large files are uploaded with limited concurrency to avoid memory exhaustion."""
+
     def _upload_one(item):
         local_path = item["path"]
         rel_path = local_path.split(directory)[-1]
-        remote_key = rel_directory + rel_path
-        stat = os.stat(local_path)
-        blob = bucket.blob(remote_key)
-        blob.chunk_size = 8 * 1024 * 1024  # 8 MB chunks to limit per-thread memory use
-        blob.metadata = {
-            "source_mtime": str(stat.st_mtime),
-            "source_size": str(stat.st_size),
-            "source_path": local_path,
-        }
-        blob.upload_from_filename(local_path)
-        return local_path, blob.name
+        remote_uri = f"gs://{bucket_name}/{rel_directory}{rel_path}"
+        result = subprocess.run(
+            ["gcloud", "storage", "cp", local_path, remote_uri],
+            capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr.strip())
+        return remote_uri
 
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(_upload_one, item): item for item in items}
-        for future in as_completed(futures):
-            try:
-                local_path, remote_name = future.result()
-                print(f"  Uploaded {remote_name}")
-            except Exception as e:
-                item = futures[future]
-                print(f"  ERROR {item['path']}: {type(e).__name__}: {e}")
+    def _run_pool(file_list, workers):
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = {executor.submit(_upload_one, item): item for item in file_list}
+            for future in as_completed(futures):
+                try:
+                    remote_uri = future.result()
+                    print(f"  Uploaded {remote_uri}", flush=True)
+                except Exception as e:
+                    item = futures[future]
+                    print(f"  ERROR {item['path']}: {e}", flush=True)
+
+    small = [f for f in items if f["size"] < LARGE_FILE_THRESHOLD]
+    large = [f for f in items if f["size"] >= LARGE_FILE_THRESHOLD]
+
+    if small:
+        _run_pool(small, max_workers)
+    if large:
+        print(f"  Uploading {len(large)} large file(s) one at a time to limit memory usage...", flush=True)
+        _run_pool(large, 1)
 
 
 def submit_uger_job(
@@ -362,7 +374,6 @@ def update(ctx, jobs, uger):
         target_subdirs = target_directories[directory]["subdirs"]
         target_bucket = target_directories[directory]["bucket"]
         rel_directory = directory.split("/")[-1]
-        bucket_handle = client.bucket(target_bucket)
 
         for subdir in target_subdirs:
             items = collect_files(directory, subdir)
@@ -370,10 +381,10 @@ def update(ctx, jobs, uger):
             to_upload = find_files_to_upload(items, gcp_items, f"{rel_directory}/{subdir}/", directory)
 
             if not to_upload:
-                print(f"[{subdir}] Nothing to upload.")
+                print(f"[{subdir}] Nothing to upload.", flush=True)
                 continue
 
-            print(f"[{subdir}] {len(to_upload)} file(s) to upload.")
+            print(f"[{subdir}] {len(to_upload)} file(s) to upload.", flush=True)
 
             if uger:
                 submit_uger_job(
@@ -386,7 +397,7 @@ def update(ctx, jobs, uger):
                 )
             else:
                 upload_parallel(
-                    bucket=bucket_handle,
+                    bucket_name=target_bucket,
                     items=to_upload,
                     directory=directory,
                     rel_directory=rel_directory,
