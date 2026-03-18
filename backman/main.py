@@ -8,6 +8,7 @@ import tempfile
 import yaml
 import os
 import pathlib
+import math
 import hashlib
 import queue
 import threading
@@ -47,64 +48,53 @@ def prompt_choice(prompt, valid_options):
         print(f"Invalid input. Valid options are: {', '.join(valid_options)}")
 
 
-LARGE_FILE_THRESHOLD = 256 * 1024 * 1024
-
-
 def upload_parallel(bucket_name, items, directory, rel_directory, max_workers, client=None):
     bucket = client.bucket(bucket_name)
 
-    small = [f for f in items if f["size"] < LARGE_FILE_THRESHOLD]
-    large = [f for f in items if f["size"] >= LARGE_FILE_THRESHOLD]
+    # lower the threshold so fewer large files are called "small"
+    EFFECTIVE_SMALL_THRESHOLD = 50 * 1024 * 1024  # 50 MB
 
-    errors = []
-    lock = threading.Lock()
-    counter = [0]  # use list for mutability inside closure
+    small = [f for f in items if f["size"] < EFFECTIVE_SMALL_THRESHOLD]
+    large = [f for f in items if f["size"] >= EFFECTIVE_SMALL_THRESHOLD]
 
-    def worker(q, total):
-        while True:
-            item = q.get()
-            if item is None:
-                break
-            try:
-                rel_path = item["path"].split(directory)[-1]
-                remote_key = f"{rel_directory}{rel_path}"
-                blob = bucket.blob(remote_key)
-                blob.upload_from_filename(item["path"])
-
-                with lock:
-                    counter[0] += 1
-                    if counter[0] % 100 == 0:
-                        print(f"  Progress: {counter[0]}/{total}", flush=True)
-
-            except Exception as e:
-                with lock:
-                    errors.append((item["path"], str(e)))
-                    print(f"  ERROR {item['path']}: {e}", flush=True)
-            finally:
-                q.task_done()
-
+    # process small files in batches rather than all at once
+    BATCH_SIZE = 50
     if small:
-        q = queue.Queue()
         total = len(small)
-        print(f"  Uploading {total} small file(s) with {max_workers} workers...", flush=True)
+        n_batches = math.ceil(total / BATCH_SIZE)
+        print(f"  Uploading {total} small file(s) in {n_batches} batch(es)...", flush=True)
 
-        # start workers
-        workers = []
-        for _ in range(min(max_workers, 4)):
-            t = threading.Thread(target=worker, args=(q, total))
-            t.daemon = True
-            t.start()
-            workers.append(t)
+        for batch_idx in range(n_batches):
+            batch = small[batch_idx * BATCH_SIZE : (batch_idx + 1) * BATCH_SIZE]
 
-        # feed queue — workers pull one at a time, memory stays flat
-        for item in small:
-            q.put(item)
+            # only build the list for this batch, not all files
+            file_blob_pairs = [
+                (
+                    item["path"],
+                    bucket.blob(f"{rel_directory}{item['path'].split(directory)[-1]}")
+                )
+                for item in batch
+            ]
 
-        # send stop signals
-        for _ in workers:
-            q.put(None)
+            results = transfer_manager.upload_many(
+                file_blob_pairs,
+                worker_type="thread",
+                max_workers=min(max_workers, 4),
+            )
 
-        q.join()
+            for (local_path, blob), result in zip(file_blob_pairs, results):
+                if isinstance(result, Exception):
+                    print(
+                        f"  ERROR {local_path}: "
+                        f"{type(result).__name__}: {result or '(no message)'}",
+                        flush=True
+                    )
+                else:
+                    print(f"  Uploaded gs://{bucket_name}/{blob.name}", flush=True)
+
+            # explicitly release memory before next batch
+            del file_blob_pairs
+            del results
 
     if large:
         print(f"  Uploading {len(large)} large file(s) with chunked streaming...", flush=True)
@@ -123,10 +113,6 @@ def upload_parallel(bucket_name, items, directory, rel_directory, max_workers, c
             except Exception as e:
                 print(f"  ERROR {item['path']}: {e}", flush=True)
 
-    if errors:
-        print(f"\n  {len(errors)} file(s) failed to upload:")
-        for path, err in errors:
-            print(f"  - {path}: {err}")
 
 def submit_uger_job(
     bucket_name: str,
