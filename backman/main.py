@@ -231,8 +231,8 @@ def find_files_to_upload(
             to_upload.append({**file, "reason": "missing"})
         elif file["size"] != remote_manifest[remote_key]["size"]:
             to_upload.append({**file, "reason": "modified"})
-        elif file["crc32c"] != remote_manifest[remote_key]["crc32c"]:
-            to_upload.append({**file, "reason": "checksum mismatch"})
+        #elif file["crc32c"] != remote_manifest[remote_key]["crc32c"]:
+        #    to_upload.append({**file, "reason": "checksum mismatch"})
 
     return to_upload
 
@@ -251,8 +251,8 @@ def retrieve_gcp_files(
         # print(f'- {blob.name}')
         manifest[blob.name] = {
             "size": blob.size,
-            "updated": blob.updated,
-            "crc32c": blob.crc32c,  # base64-encoded CRC32c
+            "updated": blob.updated
+            # "crc32c": blob.crc32c,  # base64-encoded CRC32c
         }
 
     return manifest
@@ -366,14 +366,14 @@ def status(ctx):
                 for dir in upload_dict:
                     modified = len([file for file in upload_dict[dir] if file['reason'] == 'modified'])
                     missing = len([file for file in upload_dict[dir] if file['reason'] == 'missing'])
-                    checksum = len([file for file in upload_dict[dir] if file['reason'] == 'checksum mismatch'])
+                    #checksum = len([file for file in upload_dict[dir] if file['reason'] == 'checksum mismatch'])
                     print(f'- {dir}: {len(upload_dict[dir])} files out of date')
                     if modified > 0:
                         print(f'  • {modified} modified')
                     if missing > 0:
                         print(f'  • {missing} missing')
-                    if checksum > 0:
-                        print(f'  • {missing} checksum mismatch')
+                    #if checksum > 0:
+                    #    print(f'  • {missing} checksum mismatch')
             else:
                 for dir in upload_dict:
                     print(f"{dir}:")
