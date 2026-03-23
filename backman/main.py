@@ -13,30 +13,33 @@ import hashlib
 import queue
 import threading
 import click
+import crcmod
+import struct
+import base64
 
 from google.cloud import storage
 from google.cloud.storage import transfer_manager
 
 
 EXCLUDE_EXTENSIONS = {
-    ".pyc",
-    ".pyo",
+    #".pyc",
+    #".pyo",
     #".json",
-    ".env",
-    ".bam",
-    ".swp",   # vim swap files
+    #".env",
+    #".bam",
+    #".swp",   # vim swap files
 }
 
 EXCLUDE_DIRS = {
-    ".git",
-    "__pycache__",
-    "node_modules",
-    ".venv",
-    "venv",
-    "env",
-    "tmp",
-    "temp",
-    "scratch",
+    #".git",
+    #"__pycache__",
+    #"node_modules",
+    #".venv",
+    #"venv",
+    #"env",
+    #"tmp",
+    #"temp",
+    #"scratch",
 }
 
 
@@ -46,6 +49,14 @@ def prompt_choice(prompt, valid_options):
         if response in valid_options:
             return response
         print(f"Invalid input. Valid options are: {', '.join(valid_options)}")
+
+
+def crc32c(filepath):
+    crc_fn = crcmod.predefined.mkCrcFun('crc-32c')
+    with open(filepath, 'rb') as f:
+        crc = crc_fn(f.read())
+    # GCP returns CRC32c as base64-encoded big-endian 32-bit int
+    return base64.b64encode(struct.pack('>I', crc)).decode('utf-8')
 
 
 def upload_parallel(bucket_name, items, directory, rel_directory, max_workers, client=None):
@@ -215,7 +226,8 @@ def find_files_to_upload(
             to_upload.append({**file, "reason": "missing"})
         elif file["size"] != remote_manifest[remote_key]["size"]:
             to_upload.append({**file, "reason": "modified"})
-        # optionally add MD5 comparison here for extra confidence
+        elif file["crc32c"] != remote_manifest[remote_key]["crc32c"]:
+            to_upload.append({**file, "reason": "checksum mismatch"})
 
     return to_upload
 
@@ -235,7 +247,7 @@ def retrieve_gcp_files(
         manifest[blob.name] = {
             "size": blob.size,
             "updated": blob.updated,
-            "md5": blob.md5_hash,  # base64-encoded MD5
+            "crc32c": blob.crc32c,  # base64-encoded CRC32c
         }
 
     return manifest
@@ -263,6 +275,7 @@ def collect_files(root: str, subdir: str) -> list[dict]:
                             "path": entry.path,
                             "size": stat.st_size,
                             "mtime": stat.st_mtime,
+                            "crc32c": crc32c(entry.path)
                         })
             except PermissionError:
                 print(f"Warning: permission denied, skipping {entry.path}")
