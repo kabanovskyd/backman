@@ -52,6 +52,7 @@ def prompt_choice(prompt, valid_options):
 
 
 def crc32c(filepath):
+    print(filepath)
     crc_fn = crcmod.predefined.mkCrcFun('crc-32c')
     with open(filepath, 'rb') as f:
         crc = crc_fn(f.read())
