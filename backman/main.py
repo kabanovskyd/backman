@@ -279,8 +279,8 @@ def collect_files(root: str, subdir: str) -> list[dict]:
                         results.append({
                             "path": entry.path,
                             "size": stat.st_size,
-                            "mtime": stat.st_mtime,
-                            "crc32c": crc32c(entry.path)
+                            "mtime": stat.st_mtime
+                            #"crc32c": crc32c(entry.path)
                         })
             except PermissionError:
                 print(f"Warning: permission denied, skipping {entry.path}")
