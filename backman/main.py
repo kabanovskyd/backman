@@ -361,11 +361,14 @@ def status(ctx):
                 for dir in upload_dict:
                     modified = len([file for file in upload_dict[dir] if file['reason'] == 'modified'])
                     missing = len([file for file in upload_dict[dir] if file['reason'] == 'missing'])
+                    checksum = len([file for file in upload_dict[dir] if file['reason'] == 'checksum mismatch'])
                     print(f'- {dir}: {len(upload_dict[dir])} files out of date')
                     if modified > 0:
                         print(f'  • {modified} modified')
                     if missing > 0:
                         print(f'  • {missing} missing')
+                    if checksum > 0:
+                        print(f'  • {missing} checksum mismatch')
             else:
                 for dir in upload_dict:
                     print(f"{dir}:")
