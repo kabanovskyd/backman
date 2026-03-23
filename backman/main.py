@@ -54,8 +54,12 @@ def prompt_choice(prompt, valid_options):
 def crc32c(filepath):
     print(filepath)
     crc_fn = crcmod.predefined.mkCrcFun('crc-32c')
-    with open(filepath, 'rb') as f:
-        crc = crc_fn(f.read())
+    try:
+        with open(filepath, 'rb') as f:
+            crc = crc_fn(f.read())
+    except Exception as e:
+        print(f"Cannot read {filepath}: {e}")
+        return -1
     # GCP returns CRC32c as base64-encoded big-endian 32-bit int
     return base64.b64encode(struct.pack('>I', crc)).decode('utf-8')
 
