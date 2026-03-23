@@ -87,7 +87,7 @@ def upload_parallel(bucket_name, items, directory, rel_directory, max_workers, c
             file_blob_pairs = [
                 (
                     item["path"],
-                    bucket.blob(f"{rel_directory}{item['path'].split(directory)[-1]}")
+                    bucket.blob(f"{rel_directory}/{os.path.relpath(item['path'], directory)}")
                 )
                 for item in batch
             ]
@@ -115,8 +115,8 @@ def upload_parallel(bucket_name, items, directory, rel_directory, max_workers, c
     if large:
         print(f"  Uploading {len(large)} large file(s) with chunked streaming...", flush=True)
         for item in large:
-            rel_path = item["path"].split(directory)[-1]
-            remote_key = f"{rel_directory}{rel_path}"
+            rel_path = os.path.relpath(item["path"], directory)
+            remote_key = f"{rel_directory}/{rel_path}"
             blob = bucket.blob(remote_key)
             try:
                 transfer_manager.upload_chunks_concurrently(
@@ -145,8 +145,8 @@ def submit_uger_job(
     manifest = []
     for item in items:
         local_path = item["path"]
-        rel_path = local_path.split(directory)[-1]
-        remote_key = rel_directory + rel_path
+        rel_path = os.path.relpath(local_path, directory)
+        remote_key = rel_directory + '/' + rel_path
         stat = os.stat(local_path)
         manifest.append({
             "local_path": local_path,
@@ -223,9 +223,9 @@ def find_files_to_upload(
 
     for file in local_files:
         abs_path = file['path']
-        rel_path = abs_path.split(directory)[-1]
-        folder = directory.split('/')[-1]
-        remote_key = folder + rel_path
+        rel_path = os.path.relpath(abs_path, directory)
+        folder = os.path.basename(directory)
+        remote_key = folder + '/' + rel_path
 
         if remote_key not in remote_manifest:
             to_upload.append({**file, "reason": "missing"})
@@ -269,10 +269,10 @@ def collect_files(root: str, subdir: str) -> list[dict]:
             return
         for entry in entries:
             try:
-                if entry.is_dir(follow_symlinks=False):
+                if entry.is_dir(follow_symlinks=True):
                     if entry.name not in EXCLUDE_DIRS:
                         _walk(entry.path)
-                elif entry.is_file(follow_symlinks=False):
+                elif entry.is_file(follow_symlinks=True):
                     ext = os.path.splitext(entry.name)[1].lower()
                     if ext not in EXCLUDE_EXTENSIONS:
                         stat = entry.stat()
