@@ -8,17 +8,16 @@ import tempfile
 import yaml
 import os
 import pathlib
-import math
 import hashlib
 import queue
 import threading
+import concurrent.futures
 import click
 import crcmod
 import struct
 import base64
 
 from google.cloud import storage
-from google.cloud.storage import transfer_manager
 
 
 EXCLUDE_EXTENSIONS = {
@@ -65,69 +64,32 @@ def crc32c(filepath):
 
 
 def upload_parallel(bucket_name, items, directory, rel_directory, max_workers, client=None):
-    bucket = client.bucket(bucket_name)
-
-    # lower the threshold so fewer large files are called "small"
-    EFFECTIVE_SMALL_THRESHOLD = 50 * 1024 * 1024  # 50 MB
-
-    small = [f for f in items if f["size"] < EFFECTIVE_SMALL_THRESHOLD]
-    large = [f for f in items if f["size"] >= EFFECTIVE_SMALL_THRESHOLD]
-
-    # process small files in batches rather than all at once
-    BATCH_SIZE = 50
-    if small:
-        total = len(small)
-        n_batches = math.ceil(total / BATCH_SIZE)
-        print(f"  Uploading {total} small file(s) in {n_batches} batch(es)...", flush=True)
-
-        for batch_idx in range(n_batches):
-            batch = small[batch_idx * BATCH_SIZE : (batch_idx + 1) * BATCH_SIZE]
-
-            # only build the list for this batch, not all files
-            file_blob_pairs = [
-                (
-                    item["path"],
-                    bucket.blob(f"{rel_directory}/{os.path.relpath(item['path'], directory)}")
-                )
-                for item in batch
-            ]
-
-            results = transfer_manager.upload_many(
-                file_blob_pairs,
-                worker_type="thread",
-                max_workers=min(max_workers, 4),
+    def upload_one(item):
+        local_path = item["path"]
+        rel_path = os.path.relpath(local_path, directory)
+        remote_uri = f"gs://{bucket_name}/{rel_directory}/{rel_path}"
+        try:
+            result = subprocess.run(
+                ["gcloud", "storage", "cp", local_path, remote_uri],
+                capture_output=True,
+                text=True,
+                check=True  # raises CalledProcessError if returncode != 0
             )
+        except subprocess.CalledProcessError as e:
+            print(f"Upload failed: {e.stderr}")
+        if result.returncode != 0:
+            print(
+                f"  ERROR {local_path}: {result.stderr.strip() or '(no message)'}",
+                flush=True,
+            )
+        else:
+            print(f"  Uploaded {remote_uri}", flush=True)
 
-            for (local_path, blob), result in zip(file_blob_pairs, results):
-                if isinstance(result, Exception):
-                    print(
-                        f"  ERROR {local_path}: "
-                        f"{type(result).__name__}: {result or '(no message)'}",
-                        flush=True
-                    )
-                else:
-                    print(f"  Uploaded gs://{bucket_name}/{blob.name}", flush=True)
-
-            # explicitly release memory before next batch
-            del file_blob_pairs
-            del results
-
-    if large:
-        print(f"  Uploading {len(large)} large file(s) with chunked streaming...", flush=True)
-        for item in large:
-            rel_path = os.path.relpath(item["path"], directory)
-            remote_key = f"{rel_directory}/{rel_path}"
-            blob = bucket.blob(remote_key)
-            try:
-                transfer_manager.upload_chunks_concurrently(
-                    item["path"],
-                    blob,
-                    chunk_size=256 * 1024 * 1024,
-                    max_workers=4,
-                )
-                print(f"  Uploaded gs://{bucket_name}/{blob.name}", flush=True)
-            except Exception as e:
-                print(f"  ERROR {item['path']}: {e}", flush=True)
+    print(f"  Uploading {len(items)} file(s) via gcloud storage cp...", flush=True)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(upload_one, item) for item in items]
+        for future in concurrent.futures.as_completed(futures):
+            future.result()
 
 
 def submit_uger_job(
@@ -402,29 +364,41 @@ def update(ctx, jobs, uger):
     config = ctx.obj["config"]
     client = ctx.obj["client"]
     credentials_path = os.path.abspath(config.get("authentication_file", "./credentials.json"))
+    uploaded_subdirs = []
+    if not pathlib.Path('./uploaded_subdirs.txt').is_file():
+        with open('./uploaded_subdirs.txt', 'a+') as file:
+            pass
+
+    with open('./uploaded_subdirs.txt', 'r') as trackerfile:
+        for line in trackerfile:
+            uploaded_subdirs.append(line.strip())
 
     for directory in target_directories.keys():
         if not target_directories[directory].get("active", True):
             continue
         target_subdirs = target_directories[directory]["subdirs"]
         target_bucket = target_directories[directory]["bucket"]
-        rel_directory = directory.split("/")[-1]
+        subdirs_to_upload = set(target_subdirs) - set(uploaded_subdirs)
+        rel_directory = os.path.basename(directory)
 
-        for subdir in target_subdirs:
+        #for subdir in target_subdirs:
+        for subdir in subdirs_to_upload:
             items = collect_files(directory, subdir)
-            gcp_items = retrieve_gcp_files(client, target_bucket, rel_directory, subdir)
-            to_upload = find_files_to_upload(items, gcp_items, f"{rel_directory}/{subdir}/", directory)
+            #gcp_items = retrieve_gcp_files(client, target_bucket, rel_directory, subdir)
+            #to_upload = find_files_to_upload(items, gcp_items, f"{rel_directory}/{subdir}/", directory)
 
-            if not to_upload:
+            '''if not to_upload:
                 print(f"[{subdir}] Nothing to upload.", flush=True)
-                continue
+                continue'''
 
-            print(f"[{subdir}] {len(to_upload)} file(s) to upload.", flush=True)
+            #print(f"[{subdir}] {len(to_upload)} file(s) to upload.", flush=True)
+            print(f"[{subdir}] {len(items)} file(s) to upload.", flush=True)
 
             if uger:
                 submit_uger_job(
                     bucket_name=target_bucket,
-                    items=to_upload,
+                    #items=to_upload,
+                    items=items,
                     directory=directory,
                     rel_directory=rel_directory,
                     jobs=jobs,
@@ -433,12 +407,16 @@ def update(ctx, jobs, uger):
             else:
                 upload_parallel(
                     bucket_name=target_bucket,
-                    items=to_upload,
+                    #items=to_upload,
+                    items=items,
                     directory=directory,
                     rel_directory=rel_directory,
                     max_workers=jobs,
                     client=client,
                 )
+            
+            with open('./uploaded_subdirs.txt', 'a') as trackerfile:
+                trackerfile.write(subdir + '\n')
 
 
 @cli.command()
