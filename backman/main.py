@@ -67,7 +67,7 @@ def upload_parallel(bucket_name, items, directory, rel_directory, max_workers, c
     def upload_one(item):
         local_path = item["path"]
         rel_path = os.path.relpath(local_path, directory)
-        remote_uri = f"gs://{bucket_name}/{rel_directory}/{rel_path}"
+        remote_uri = f"gs://{bucket_name}/{rel_directory}2/{rel_path}"
         try:
             result = subprocess.run(
                 ["gcloud", "storage", "cp", local_path, remote_uri],
@@ -187,7 +187,7 @@ def find_files_to_upload(
         abs_path = file['path']
         rel_path = os.path.relpath(abs_path, directory)
         folder = os.path.basename(directory)
-        remote_key = folder + '/' + rel_path
+        remote_key = folder + '2/' + rel_path
 
         if remote_key not in remote_manifest:
             to_upload.append({**file, "reason": "missing"})
@@ -205,7 +205,8 @@ def retrieve_gcp_files(
     directory,
     subdir
 ) -> dict:
-    blobs = client.list_blobs(bucket, prefix=f"{directory}/{subdir}/")
+
+    blobs = client.list_blobs(bucket, prefix=f"{directory}2/{subdir}/")
     manifest = {}
 
     # print('Scanning bucket: ')
@@ -364,41 +365,29 @@ def update(ctx, jobs, uger):
     config = ctx.obj["config"]
     client = ctx.obj["client"]
     credentials_path = os.path.abspath(config.get("authentication_file", "./credentials.json"))
-    uploaded_subdirs = []
-    if not pathlib.Path('./uploaded_subdirs.txt').is_file():
-        with open('./uploaded_subdirs.txt', 'a+') as file:
-            pass
-
-    with open('./uploaded_subdirs.txt', 'r') as trackerfile:
-        for line in trackerfile:
-            uploaded_subdirs.append(line.strip())
 
     for directory in target_directories.keys():
         if not target_directories[directory].get("active", True):
             continue
         target_subdirs = target_directories[directory]["subdirs"]
         target_bucket = target_directories[directory]["bucket"]
-        subdirs_to_upload = set(target_subdirs) - set(uploaded_subdirs)
         rel_directory = os.path.basename(directory)
 
-        #for subdir in target_subdirs:
-        for subdir in subdirs_to_upload:
+        for subdir in target_subdirs:
             items = collect_files(directory, subdir)
-            #gcp_items = retrieve_gcp_files(client, target_bucket, rel_directory, subdir)
-            #to_upload = find_files_to_upload(items, gcp_items, f"{rel_directory}/{subdir}/", directory)
+            gcp_items = retrieve_gcp_files(client, target_bucket, rel_directory, subdir)
+            to_upload = find_files_to_upload(items, gcp_items, f"{rel_directory}/{subdir}/", directory)
 
-            '''if not to_upload:
+            if not to_upload:
                 print(f"[{subdir}] Nothing to upload.", flush=True)
-                continue'''
+                continue
 
-            #print(f"[{subdir}] {len(to_upload)} file(s) to upload.", flush=True)
-            print(f"[{subdir}] {len(items)} file(s) to upload.", flush=True)
+            print(f"[{subdir}] {len(to_upload)} file(s) to upload.", flush=True)
 
             if uger:
                 submit_uger_job(
                     bucket_name=target_bucket,
-                    #items=to_upload,
-                    items=items,
+                    items=to_upload,
                     directory=directory,
                     rel_directory=rel_directory,
                     jobs=jobs,
@@ -407,16 +396,12 @@ def update(ctx, jobs, uger):
             else:
                 upload_parallel(
                     bucket_name=target_bucket,
-                    #items=to_upload,
-                    items=items,
+                    items=to_upload,
                     directory=directory,
                     rel_directory=rel_directory,
                     max_workers=jobs,
                     client=client,
                 )
-            
-            with open('./uploaded_subdirs.txt', 'a') as trackerfile:
-                trackerfile.write(subdir + '\n')
 
 
 @cli.command()
