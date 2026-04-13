@@ -1,21 +1,32 @@
 #!/usr/bin/env python3
 
 import sys
-import json
-import shlex
 import subprocess
-import tempfile
 import yaml
 import os
 import pathlib
-import hashlib
-import queue
-import threading
 import concurrent.futures
 import click
-import crcmod
+import tomllib
+import google_crc32c
 import struct
+import shutil
 import base64
+import gspread
+import pandas as pd
+
+from crontab import CronTab
+from datetime import datetime
+from croniter import croniter
+from importlib.metadata import version, PackageNotFoundError
+from google.oauth2.service_account import Credentials
+from rich.progress import (
+    Progress, SpinnerColumn, BarColumn,
+    TextColumn, TimeElapsedColumn, MofNCompleteColumn,
+)
+from rich.console import Console
+
+console = Console()
 
 from google.cloud import storage
 
@@ -42,6 +53,85 @@ EXCLUDE_DIRS = {
 }
 
 
+def get_version():
+    """
+    Retrieve project version
+    """
+    try:
+        return version("backman")
+    except PackageNotFoundError:
+        # Fallback: Read directly from pyproject.toml if running uninstalled
+        pyproject_path = pathlib.Path(__file__).parent.parent / "pyproject.toml"
+        if pyproject_path.exists():
+            with open(pyproject_path, "rb") as f:
+                data = tomllib.load(f)
+                return data.get("project", {}).get("version", "unknown")
+        else:
+            print("Pyproject.toml file not found in root! Exiting...")
+            sys.exit(1)
+
+
+def file_crc32c_b64(
+    path: str | pathlib.Path,
+    chunk_size: int = 4*1024*1024
+):
+    """
+    Compute the CRC32c checksum of a file
+    """
+
+    val = 0
+    with open(path, "rb") as f:
+        while chunk := f.read(chunk_size):
+            val = google_crc32c.extend(val, chunk)
+
+    # encode as big-endian uint32 -> base64
+    return base64.b64encode(struct.pack(">I", val)).decode()
+
+
+def retrieve_google_sheet(sheet_url, cred_path):
+    print(f'Reading status information from sheet at {sheet_url}...')
+    try:
+        # authenticate
+        scopes = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive"
+        ]
+        creds = Credentials.from_service_account_file(cred_path, scopes=scopes)
+        gc = gspread.authorize(creds)
+
+        # open sheet
+        sh = gc.open_by_url(sheet_url)
+
+    except Exception as e:
+        print(f'Could not access the sheet at {sheet_url}: {e}')
+        sys.exit(1)
+
+    ws = sh.get_worksheet(0)
+    status_df = pd.DataFrame(ws.get_all_records())
+    if status_df.duplicated(subset=['Directory', 'Subdirectory']).any():
+        dup_rows = status_df[status_df.duplicated(subset=['Directory', 'Subdirectory'], keep=False)]
+        dup_dir = dup_rows['Directory'].unique()
+        dup_subdir = dup_rows['Subdirectory'].unique()
+        print(f'ERROR: Google Sheet contains duplicate entries for {dup_dir}/{dup_subdir}')
+        print('Please remove the duplicate rows and re-run the command.')
+        sys.exit(1)
+    dirs = status_df['Directory'].unique().tolist()
+    status_df = status_df[status_df['Tracked'] == 'YES']
+    target_directories = {}
+    for dir in dirs:
+        target_directories[dir] = {}
+        upload_bucket = status_df[status_df['Directory'] == dir]['Bucket'].unique().tolist()
+        if len(upload_bucket) > 1:
+            print(f'ERROR: more than one bucket specified for a single directory: {dir} - {upload_bucket}')
+            print('Please ensure that only one bucket is specified per directory and re-run.')
+            sys.exit(1)
+        target_directories[dir]['bucket'] = upload_bucket[0]
+        target_directories[dir]['active'] = True
+        target_directories[dir]['subdirs'] = status_df[status_df['Directory'] == dir].tolist()
+
+    return pd.DataFrame(ws.get_all_records()), target_directories
+
+
 def prompt_choice(prompt, valid_options):
     while True:
         response = input(prompt).strip().lower()
@@ -50,21 +140,8 @@ def prompt_choice(prompt, valid_options):
         print(f"Invalid input. Valid options are: {', '.join(valid_options)}")
 
 
-def crc32c(filepath):
-    print(filepath)
-    crc_fn = crcmod.predefined.mkCrcFun('crc-32c')
-    try:
-        with open(filepath, 'rb') as f:
-            crc = crc_fn(f.read())
-    except Exception as e:
-        print(f"Cannot read {filepath}: {e}")
-        return -1
-    # GCP returns CRC32c as base64-encoded big-endian 32-bit int
-    return base64.b64encode(struct.pack('>I', crc)).decode('utf-8')
-
-
-def upload_parallel(bucket_name, items, directory, rel_directory, max_workers, client=None):
-    def upload_one(item):
+def upload_parallel(bucket_name, items, directory, rel_directory, max_workers, bar_handler, task):
+    def upload_one(item, bar_handler, task):
         local_path = item["path"]
         rel_path = os.path.relpath(local_path, directory)
         remote_uri = f"gs://{bucket_name}/{rel_directory}2/{rel_path}"
@@ -73,7 +150,7 @@ def upload_parallel(bucket_name, items, directory, rel_directory, max_workers, c
                 ["gcloud", "storage", "cp", local_path, remote_uri],
                 capture_output=True,
                 text=True,
-                check=True  # raises CalledProcessError if returncode != 0
+                check=True
             )
         except subprocess.CalledProcessError as e:
             print(f"Upload failed: {e.stderr}")
@@ -83,101 +160,23 @@ def upload_parallel(bucket_name, items, directory, rel_directory, max_workers, c
                 flush=True,
             )
         else:
-            print(f"  Uploaded {remote_uri}", flush=True)
+            bar_handler.advance(task, 1)
+            # print(f"  Uploaded {remote_uri}", flush=True)
 
-    print(f"  Uploading {len(items)} file(s) via gcloud storage cp...", flush=True)
+    # print(f"  Uploading {len(items)} file(s) via gcloud storage cp...", flush=True)
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = [executor.submit(upload_one, item) for item in items]
+        futures = [executor.submit(upload_one, item, bar_handler, task) for item in items]
         for future in concurrent.futures.as_completed(futures):
             future.result()
 
-
-def submit_uger_job(
-    bucket_name: str,
-    items: list[dict],
-    directory: str,
-    rel_directory: str,
-    jobs: int,
-    credentials_path: str,
-) -> None:
-    """Write a JSON manifest and qsub array job script, then submit via qsub."""
-    work_dir = tempfile.mkdtemp(prefix="backman_uger_")
-    os.makedirs(os.path.join(work_dir, "logs"), exist_ok=True)
-
-    manifest = []
-    for item in items:
-        local_path = item["path"]
-        rel_path = os.path.relpath(local_path, directory)
-        remote_key = rel_directory + '/' + rel_path
-        stat = os.stat(local_path)
-        manifest.append({
-            "local_path": local_path,
-            "remote_key": remote_key,
-            "source_mtime": str(stat.st_mtime),
-            "source_size": str(stat.st_size),
-            "bucket": bucket_name,
-        })
-
-    manifest_path = os.path.join(work_dir, "manifest.json")
-    with open(manifest_path, "w") as f:
-        json.dump(manifest, f, indent=2)
-
-    helper_path = os.path.join(work_dir, "upload_task.py")
-    helper_script = f"""\
-    #!{sys.executable}
-    import json, os, sys
-    from google.cloud import storage
-    from google.cloud.storage import transfer_manager
-
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = {repr(credentials_path)}
-    manifest_path = {repr(manifest_path)}
-    task_index = int(os.environ["SGE_TASK_ID"]) - 1
-
-    with open(manifest_path) as f:
-        manifest = json.load(f)
-
-    if task_index >= len(manifest):
-        sys.exit(0)
-
-    task = manifest[task_index]
-    client = storage.Client()
-    bucket = client.bucket(task["bucket"])
-    blob = bucket.blob(task["remote_key"])
-    blob.content_type = "application/gzip"
-    blob.metadata = {{
-        "source_mtime": task["source_mtime"],
-        "source_size": task["source_size"],
-        "source_path": task["local_path"],
-    }}
-
-    # Use chunked upload instead of upload_from_filename
-    transfer_manager.upload_chunks_concurrently(
-        task["local_path"],
-        blob,
-        chunk_size=256 * 1024 * 1024,  # 256 MB chunks
-        max_workers=4,
-    )
-    print(f"Uploaded {{task['local_path']}} -> gs://{{task['bucket']}}/{{task['remote_key']}}")
-    """
-    with open(helper_path, "w") as f:
-        f.write(helper_script)
-
-    print(f"  Manifest: {manifest_path}")
-    print(f"  Job script: {helper_path}")
-    print(f"  Submitting task(s), max {jobs} concurrent...")
-
-    result = subprocess.run(["qsub", helper_path], capture_output=True, text=True)
-    if result.returncode != 0:
-        print(f"  qsub failed:\n{result.stderr}")
-        sys.exit(1)
-    print(f"  {result.stdout.strip()}")
+    return True
 
 
 def find_files_to_upload(
     local_files: list[dict],
     remote_manifest: dict,
-    bucket_prefix: str,
-    directory: str
+    directory: str,
+    upload_all: bool = False
 ) -> list[dict]:
 
     """Return only local files that are missing or changed in GCS."""
@@ -193,6 +192,8 @@ def find_files_to_upload(
             to_upload.append({**file, "reason": "missing"})
         elif file["size"] != remote_manifest[remote_key]["size"]:
             to_upload.append({**file, "reason": "modified"})
+        elif upload_all:
+            to_upload.append({**file, "reason": "all_flag"})
         #elif file["crc32c"] != remote_manifest[remote_key]["crc32c"]:
         #    to_upload.append({**file, "reason": "checksum mismatch"})
 
@@ -203,32 +204,34 @@ def retrieve_gcp_files(
     client,
     bucket,
     directory,
-    subdir
+    subdir,
+    return_blobs=False
 ) -> dict:
 
     blobs = client.list_blobs(bucket, prefix=f"{directory}2/{subdir}/")
     manifest = {}
 
-    # print('Scanning bucket: ')
+    if return_blobs:
+        return blobs
+
     for blob in blobs:
-        # print(f'- {blob.name}')
         manifest[blob.name] = {
             "size": blob.size,
-            "updated": blob.updated
-            # "crc32c": blob.crc32c,  # base64-encoded CRC32c
+            "updated": blob.updated,
+            "crc32c": blob.crc32c
         }
 
     return manifest
 
 
-def collect_files(root: str, subdir: str) -> list[dict]:
+def collect_files(root: str, subdir: str,) -> list[dict]:
     results = []
-    # print(f'Processing directory: {root}/{subdir}...')
+    skipped = []
     def _walk(path):
         try:
             entries = list(os.scandir(path))
         except PermissionError:
-            print(f"Warning: permission denied, skipping {path}")
+            print(f"WARNING: permission denied, skipping {path}")
             return
         for entry in entries:
             try:
@@ -247,28 +250,21 @@ def collect_files(root: str, subdir: str) -> list[dict]:
                         })
             except PermissionError:
                 print(f"Warning: permission denied, skipping {entry.path}")
+                skipped.append(path / entry)
 
     path = pathlib.Path(root) / subdir
+    if subdir == '*':
+        return list(path.rglob("*"))
+
     _walk(path)
-    #print(f'Found contents:')
-    #for item in results:
-    #    print(f'- {root}/{item}')
 
-    return results
-'''
-print("""
-      ------------------------------------------------------------------
-      ██████╗  █████╗  ██████╗██╗  ██╗     ███╗   ███╗ █████╗ ███╗   ██╗    
-      ██╔══██╗██╔══██╗██╔════╝██║ ██╔╝     ████╗ ████║██╔══██╗████╗  ██║   
-      ██████╔╝███████║██║     █████╔╝█████╗██╔████╔██║███████║██╔██╗ ██║  
-      ██╔══██╗██╔══██║██║     ██╔═██╗╚════╝██║╚██╔╝██║██╔══██║██║╚██╗██║  
-      ██████╔╝██║  ██║╚██████╗██║  ██╗     ██║ ╚═╝ ██║██║  ██║██║ ╚████║  
-      ╚═════╝ ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝     ╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝
-      ------------------------------------------------------------------
-      """)
-'''
+    return results, skipped
 
-@click.group()
+
+@click.group(add_help_option=False)                
+@click.version_option(version=get_version(), prog_name="backman")                                                                                
+@click.option("--help", is_flag=True, is_eager=True, expose_value=False,
+              callback=help, help="Show this message and exit.") 
 @click.pass_context
 def cli(ctx):
     """backman — automated lab data backup tool."""
@@ -277,67 +273,127 @@ def cli(ctx):
     # skip config loading if init is being called
     if ctx.invoked_subcommand == "init":
         return
-
-    with open('backfile.yaml', 'r') as file:
-        config = yaml.safe_load(file)
+    
+    # read the backfile and load contents
+    backfile_path = pathlib.Path('backfile.yaml')
+    if not backfile_path.is_file():
+        print("backfile.yaml not found in project root!")
+        sys.exit(1)
+    try:
+        with open('backfile.yaml', 'r') as file:
+            config = yaml.safe_load(file)
+    except Exception as e:
+        print(f"Could not load the Backfile: {e}")
+        sys.exit(1)
 
     ctx.obj["config"] = config
-    if ctx.invoked_subcommand == "set-auth":
+
+    # skip the authentication process if setting auth file
+    if ctx.invoked_subcommand == "set":
         return
 
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "./credentials.json"
+    # store authentication key file as an environment variable
+    if 'authentication_file' not in config:
+        print("`authentication_file` field missing from Backfile! Add it manually or run `backman set auth <path/to/auth/file>`")
+        sys.exit(1)
+    if not pathlib.Path(config['authentication_file']).is_file():
+        print(f'Authentication file {config['authentication_file']} does not exist!')
+        sys.exit(1)
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = config['authentication_file']
+
+    # make sure Backfile contains directories specified for tracking
     if 'directories' not in config:
         print('No directories specified for tracking! Run `backman add [directories]` to track and update directories.')
-        exit(1)
-    
+        sys.exit(1)
     ctx.obj["directories"] = config['directories']
+
+    # make sure Google Sheets fields are initialized
+    if 'google_sheet' not in config:
+        config['google_sheet'] = {'sheet_url': '', 'sheet_credentials': ''}
+    
+    if 'sheet_url' not in config['google_sheet']:
+        config['google_sheet']['sheet_url'] = ''
+    
+    if 'sheet_credentials' not in config['google_sheet']:
+        config['google_sheet']['sheet_credentials'] = ''
+
+    with open("backfile.yaml", "w") as f:
+        yaml.dump(config, f, default_flow_style=False)
+
+    ctx.obj["config"] = config
+
+    # try connecting to GCP
     try:
         ctx.obj["client"] = storage.Client()
     except Exception as e:
         print(f"Could not establish a connection to GCP: {e}")
-        exit(1)
+        sys.exit(1)
 
 
 @cli.command()
 @click.pass_context
 def status(ctx):
+    """Display the status of all tracked directories, listing subdirectories containing outdated/missing files"""
+
+    # initialize function variables
     upload_dict = {}
     total_items = 0
     target_directories = ctx.obj["directories"]
     config = ctx.obj["config"]
     client = ctx.obj["client"]
-    for directory in target_directories.keys():
+    sheet_url = config['google_sheet']['sheet_url']
+    sheet_creds = config['google_sheet']['sheet_credentials']
+    skipped_items = []
+
+    # if backman is synced with a Google Sheet, read directory information from it
+    if sheet_url != '':
+        _, target_directories = retrieve_google_sheet(sheet_url, sheet_creds)
+    
+    # iterate over tracked directories and check for outdated/missing files
+    for directory in target_directories:
         if not target_directories[directory]['active']:
             continue
         target_bucket = target_directories[directory]['bucket']
         target_subdirs = target_directories[directory]['subdirs']
+        rel_directory = os.path.basename(directory)
+
         for subdir in target_subdirs:
-            items = collect_files(directory, subdir)
-            rel_directory = directory.split('/')[-1]
-            gcp_items = retrieve_gcp_files(client, target_bucket, rel_directory, subdir)
-            to_upload = find_files_to_upload(items, gcp_items, f"{rel_directory}/{subdir}/", directory)
+            with console.status(f"[bold cyan][{subdir}][/bold cyan] Scanning...", spinner="dots"):
+                items, skipped = collect_files(directory, subdir)
+                skipped_items.extend(skipped)
+                gcp_items = retrieve_gcp_files(client, target_bucket, rel_directory, subdir, return_blobs=False)
+
+            to_upload = find_files_to_upload(items, gcp_items, directory)
+
+            # track which subdirectories contain missing/outdated files
             if len(to_upload) > 0:
                 upload_dict[subdir] = to_upload
                 total_items += len(to_upload)
 
+    # display results
+    if len(skipped_items) > 0:
+        print("WARNING - the following items were skipped:")
+        for file in skipped_items:
+            print(f" - {file}")
+
     if len(upload_dict) > 0:
         print("\n======= OUTDATED ITEMS =======\n")
         if total_items > 20:
-            opt = prompt_choice(f"Print all {len(to_upload)} items? (y or n): ", ['yes', 'y', 'no', 'n'])
-            if opt in ['no', 'n']:
+            # print compressed subdirectory overview
+            opt = prompt_choice(f"Print all {len(total_items)} items? (y/[n]): ", ['yes', 'y', 'no', 'n', ''])
+            if opt in ['no', 'n', '']:
                 print("Displaying summary of tracked directories:")
+                # iterate over directories with missing/outdated files and print how many files need to be updated
                 for dir in upload_dict:
                     modified = len([file for file in upload_dict[dir] if file['reason'] == 'modified'])
                     missing = len([file for file in upload_dict[dir] if file['reason'] == 'missing'])
-                    #checksum = len([file for file in upload_dict[dir] if file['reason'] == 'checksum mismatch'])
                     print(f'- {dir}: {len(upload_dict[dir])} files out of date')
                     if modified > 0:
                         print(f'  • {modified} modified')
                     if missing > 0:
                         print(f'  • {missing} missing')
-                    #if checksum > 0:
-                    #    print(f'  • {missing} checksum mismatch')
             else:
+                # print every file + reason for backing up
                 for dir in upload_dict:
                     print(f"{dir}:")
                     for file in upload_dict[dir]:
@@ -349,23 +405,33 @@ def status(ctx):
                     print(f"- {file['path']} ({file['reason']})")
         
         print()
-        exit(0)
+        sys.exit(0)
     else:
         print('Everything up to date!\n')
-        exit(0)
+        sys.exit(0)
 
 
 @cli.command()
 @click.pass_context
-@click.option("--jobs", default=4, show_default=True, help="Parallel upload workers (local) or max concurrent UGER tasks.")
-@click.option("--uger", is_flag=True, default=False, help="Submit uploads as a UGER qsub array job instead of uploading directly.")
-def update(ctx, jobs, uger):
-    """Run the backup on directories specified in the config file, updating any out-of-date files."""
+@click.option("--upload_all", is_flag=True, default=False, help="Back up all files in tracked subdirectories")
+@click.option("--jobs", default=4, show_default=True, help="Parallel upload workers")
+def update(ctx, jobs, upload_all):
+    """Run the backup on tracked directories, backing up any outdated/missing files."""
+
+    # initialize function variables
     target_directories = ctx.obj["directories"]
     config = ctx.obj["config"]
     client = ctx.obj["client"]
-    credentials_path = os.path.abspath(config.get("authentication_file", "./credentials.json"))
+    sheet_url = config['google_sheet']['sheet_url']
+    sheet_creds = config['google_sheet']['sheet_credentials']
+    credentials_path = pathlib.Path(config["authentication_file"])
+    all_skipped = []
 
+    # if backman is synced with a Google Sheet, read directory information from it
+    if sheet_url != '':
+        df, target_directories = retrieve_google_sheet(sheet_url, sheet_creds)
+
+    # iterate over tracked directories and back up outdated/missing files
     for directory in target_directories.keys():
         if not target_directories[directory].get("active", True):
             continue
@@ -373,35 +439,59 @@ def update(ctx, jobs, uger):
         target_bucket = target_directories[directory]["bucket"]
         rel_directory = os.path.basename(directory)
 
+        # iterate over tracked subdirectories
         for subdir in target_subdirs:
-            items = collect_files(directory, subdir)
-            gcp_items = retrieve_gcp_files(client, target_bucket, rel_directory, subdir)
-            to_upload = find_files_to_upload(items, gcp_items, f"{rel_directory}/{subdir}/", directory)
+            # `ALL` keyword allows globbing (automatic processing of all subdirectories in a dir)
+            if subdir == 'ALL':
+                subdir = '*'
+
+            with console.status(f"[bold cyan][{subdir}][/bold cyan] Scanning...", spinner="dots"):
+                items, skipped = collect_files(directory, subdir)
+                gcp_items = retrieve_gcp_files(client, target_bucket, rel_directory, subdir)
+
+            to_upload = find_files_to_upload(items, gcp_items, directory, upload_all)
+            if len(skipped) > 0:
+                all_skipped.extend(skipped)
 
             if not to_upload:
-                print(f"[{subdir}] Nothing to upload.", flush=True)
+                console.print(f"[green]✓[/green] [bold]{subdir}[/bold] — nothing to upload.")
                 continue
 
-            print(f"[{subdir}] {len(to_upload)} file(s) to upload.", flush=True)
+            console.print(f"[bold]{subdir}[/bold] — {len(to_upload)} file(s) to upload.")
+            if sheet_url != '':
+                # update the `Last Backup` column in the Google Sheet to reflect ongoing backup
+                df.loc[(df['Directory'] == directory) & (df['Subdirectory'] == subdir), 'Last Backup'] = 'In progress'
 
-            if uger:
-                submit_uger_job(
-                    bucket_name=target_bucket,
-                    items=to_upload,
-                    directory=directory,
-                    rel_directory=rel_directory,
-                    jobs=jobs,
-                    credentials_path=credentials_path,
-                )
-            else:
-                upload_parallel(
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[bold blue]{task.description}"),
+                BarColumn(),
+                MofNCompleteColumn(),
+                TextColumn("•"),
+                TimeElapsedColumn(),
+                console=console,
+            ) as progress:
+                task = progress.add_task(f"Uploading [bold]{subdir}[/bold]...", total=len(to_upload))
+                # upload the files directly
+                upload_success = upload_parallel(
                     bucket_name=target_bucket,
                     items=to_upload,
                     directory=directory,
                     rel_directory=rel_directory,
                     max_workers=jobs,
-                    client=client,
+                    bar_handler=progress,
+                    task=task,
                 )
+            if upload_success and sheet_url != '':
+                # update the `Last Backup` column in the Google Sheet with the latest backup date/time
+                now = datetime.datetime.now()
+                df.loc[(df['Directory'] == directory) & (df['Subdirectory'] == subdir), 'Last Backup'] = now.strftime("%Y-%m-%d %H:%M")
+
+    # list any files that were skipped
+    if len(all_skipped) > 0:
+        print('WARNING: the following files have NOT been uploaded due to insufficient permissions:')
+        for file in all_skipped:
+            print(f' - {file}')
 
 
 @cli.command()
@@ -410,6 +500,17 @@ def update(ctx, jobs, uger):
 def exclude(ctx, dirs):
     """Exclude specified directories from future backups, but keep them in the config file."""
     config = ctx.obj["config"]
+    sheet_url = config['google_sheet']['sheet_url']
+    sheet_creds = config['google_sheet']['sheet_credentials']
+
+    if sheet_url != '':
+        print(f'Updating the values in the Google Sheet at {sheet_url}...')
+        df, _ = retrieve_google_sheet(sheet_url, sheet_creds)
+        for dir in dirs:
+            rows_to_update = df[df['Directory'] == dir]
+            for _, row in rows_to_update.iterrows():
+                row['Tracked'] = 'NO'
+        sys.exit(0)
 
     if any(directory not in config['directories'] for directory in dirs):
         print('\nThe following directories are not present in the backfile:\n')
@@ -417,7 +518,7 @@ def exclude(ctx, dirs):
             if directory not in config['directories']:
                 print(f'- {directory}')
         print('\nPlease make sure all listed directories are present in the backfile and re-run the command.\n')
-        exit(1)
+        sys.exit(1)
 
     for directory in dirs:
         config['directories'][directory]['active'] = False
@@ -436,6 +537,17 @@ def exclude(ctx, dirs):
 @click.argument("dirs", nargs=-1, required=True)
 def include(ctx, dirs):
     config = ctx.obj["config"]
+    sheet_url = config['google_sheet']['sheet_url']
+    sheet_creds = config['google_sheet']['sheet_credentials']
+
+    if sheet_url != '':
+        print(f'Updating the values in the Google Sheet at {sheet_url}...')
+        df, _ = retrieve_google_sheet(sheet_url, sheet_creds)
+        for dir in dirs:
+            rows_to_update = df[df['Directory'] == dir]
+            for _, row in rows_to_update.iterrows():
+                row['Tracked'] = 'YES'
+        sys.exit(0)
 
     if any(directory not in config['directories'] for directory in dirs):
         print('\nThe following directories are not present in the backfile:\n')
@@ -443,7 +555,7 @@ def include(ctx, dirs):
             if directory not in config['directories']:
                 print(f'- {directory}')
         print('\nPlease make sure all listed directories are present in the backfile and re-run the command.\n')
-        exit(1)
+        sys.exit(1)
 
     for directory in dirs:
         config['directories'][directory]['active'] = True
@@ -464,11 +576,12 @@ def init():
         print('WARNING: you are about to overwrite the existing Backfile - this will delete ALL data about currently tracked directories!')
         opt = prompt_choice('Are you sure you would like to continue? (y/n): ', ['yes', 'y', 'no', 'n'])
         if opt not in ['yes', 'y']:
-            exit(0)
+            sys.exit(0)
 
     print('Creating Backfile...')
     config = {}
     config['authentication_file'] = ''
+    config['google_sheet'] = {'sheet_url': '', 'sheet_credentials': ''}
     config['directories'] = {}
     with open("backfile.yaml", "w") as file:
         yaml.dump(config, file, default_flow_style=False)
@@ -478,23 +591,73 @@ def init():
 
 @cli.command()
 @click.pass_context
-@click.argument("auth_key_path", nargs=1, required=True)
-def set_auth(ctx, auth_key_path):
+@click.argument("auth", nargs=1, required=False)
+@click.argument("bucket", nargs=-1, required=False)
+def set(ctx, auth, bucket):
     config = ctx.obj['config']
-    if not pathlib.Path(auth_key_path).is_file():
-        print(f'{auth_key_path} not found.')
-        exit(1)
+    if auth:
+        if not pathlib.Path(auth).is_file():
+            print(f'{auth} not found.')
+            sys.exit(1)
 
-    print(f'\nSet {auth_key_path} as the authentication key file.\n')
-    config['authentication_file'] = auth_key_path
-    with open("backfile.yaml", "w") as file:
-        yaml.dump(config, file, default_flow_style=False)
+        print(f'\nSet {auth} as the authentication key file.\n')
+        config['authentication_file'] = auth
+        with open("backfile.yaml", "w") as file:
+            yaml.dump(config, file, default_flow_style=False)
+
+    if bucket:
+        for address in bucket:
+            if ':' not in address or len(address.split(':')) > 2:
+                print("Usage: backman set bucket <directory>:<bucket>")
+                sys.exit(1)
+            directory, bucket_addr = address.split(":")
+            if directory == "*":
+                for dir in config['directories']:
+                    config['directories'][dir]['bucket'] = bucket_addr
+            else:
+                if directory not in config['directories']:
+                    print(f"Directory {directory} not found in Backfile! Please add it with `backman add {directory}:<subdirectory>`")
+                    sys.exit(1)
+                config['directories'][directory]['bucket'] = bucket_addr
 
 
 @cli.command()
 @click.pass_context
 def config(ctx):
     config = ctx.obj['config']
+    sheet_url = config['google_sheet']['sheet_url']
+    sheet_creds = config['google_sheet']['sheet_credentials']
+
+    if sheet_url != '':
+        print('\n============= GOOGLE SHEET SUMMARY =============')
+        df, _ = retrieve_google_sheet(sheet_url, sheet_creds)
+        if 'YES' in df['Tracked']:
+            print(f'\nTracked directories:')
+            tracked_dirs = df[df['Tracked'] == 'YES']['Directory'].unique().tolist()
+            for dir in tracked_dirs:
+                tracked_subdirs = df.loc[(df['Directory'] == dir) & (df['Tracked'] == 'YES')]['Subdirectory']
+                bucket = tracked_subdirs['Bucket'].tolist()[0]
+                print(f'\n• {dir}')
+                print(f'  bucket: {bucket}')
+                print('  subdirs:')
+                for subdir in tracked_subdirs:
+                    print(f'   - {subdir}')
+
+        if 'NO' in df['Tracked']:
+            print(f'\nUntracked directories:')
+            tracked_dirs = df[df['Tracked'] == 'NO']['Directory'].unique().tolist()
+            for dir in tracked_dirs:
+                tracked_subdirs = df.loc[(df['Directory'] == dir) & (df['Tracked'] == 'NO')]['Subdirectory']
+                bucket = tracked_subdirs['Bucket'].tolist()[0]
+                print(f'\n• {dir}')
+                print(f'  bucket: {bucket}')
+                print('  subdirs:')
+                for subdir in tracked_subdirs:
+                    print(f'   - {subdir}')
+                
+        sys.exit(0)   
+
+
     print('\n============= BACKFILE SUMMARY =============')
     print(f'Authentication file: {config['authentication_file']}')
     if any(config['directories'][directory]['active'] for directory in config['directories']):
@@ -538,10 +701,10 @@ def add(ctx, dirs):
         dir_file = dirs[1]
         if len(dirs) > 2:
             print('Usage: backman add --file [file_with_directories]')
-            exit(1)
+            sys.exit(1)
         if not pathlib.Path(dir_file).is_file():
             print(f'File {dir_file} does not exist!')
-            exit(1)
+            sys.exit(1)
         
         dirs = []
         with open(dir_file, 'r') as file:
@@ -549,21 +712,37 @@ def add(ctx, dirs):
                 dirs.append(line)
 
     added_dirs = {}
+    add_bucket = []
     for dir in dirs:
         if ':' in dir:
             if len(dir.split(':')) != 2:
                 print('Please provide subdirectories as a list of [directory]:[subdirectory] pairs')
-                exit(1)
+                sys.exit(1)
+
             directory, subdirectory = dir.split(':')
             if not pathlib.Path(directory).is_dir():
                 print(f'{directory} is not a directory!')
-                exit(1)
+                sys.exit(1)
+
             if subdirectory == '*':
-                #TODO: implement globbing logic
-                pass
+                subdirs = [d for d in pathlib.Path(directory).glob('*') if d.is_dir()]
+                if directory not in added_dirs:
+                    added_dirs[directory] = []
+                if directory not in config['directories']:
+                    config['directories'][directory] = {'subdirs': [], 'active': True, 'bucket': ''}
+                    add_bucket.append(directory)
+                for subdir in subdirs:
+                    if 'subdirs' not in config['directories'][directory]:
+                        config['directories'][directory]['subdirs'] = [subdir]
+                        add_bucket[directory].append(subdir)
+                    if subdir not in config['directories'][directory]['subdirs']:
+                        config['directories'][directory]['subdirs'].append(subdir)
+                        add_bucket[directory].append(subdir)
+
             if not (pathlib.Path(directory) / subdirectory).is_dir():
                 print(f'{subdirectory} is not a directory!')
-                exit(1)
+                sys.exit(1)
+
             if directory in config['directories']:
                 if not 'subdirs' in config['directories'][directory]:
                     config['directories'][directory]['subdirs'] = []
@@ -583,10 +762,10 @@ def add(ctx, dirs):
             directory = dir[:-1] if dir.endswith('/') else dir
             if not pathlib.Path(dir).is_dir():
                 print(f'{dir} is not a directory!')
-                exit(1)
+                sys.exit(1)
             if dir in config['directories']:
                 print(f'{dir} is already being tracked!')
-                exit(1)
+                sys.exit(1)
             config['directories'][directory] = {}
             if not directory in added_dirs:
                 added_dirs[dir] = []
@@ -599,13 +778,470 @@ def add(ctx, dirs):
     with open("backfile.yaml", "w") as f:
         yaml.dump(config, f, default_flow_style=False)
     
-    print('\nThe following directories have been added to tracking:\n')
-    for dir in added_dirs:
-        print(f'{dir}')
-        if len(added_dirs[dir]) > 0:
-            for subdir in added_dirs[dir]:
-                print(f'  - {subdir}')
-    print()
+    if any([len(added_dirs[dir]) > 0 for dir in added_dirs]):
+        print('\nThe following directories have been added to tracking:\n')
+        for dir in added_dirs:
+            if len(added_dirs[dir]) > 0:
+                print(f'{dir}')
+                for subdir in added_dirs[dir]:
+                    print(f'  - {subdir}')
+        print()
+    else:
+        print('Nothing to add! (All directories/subdirectories already present)')
+
+
+@cli.command()
+@click.pass_context
+@click.argument("url", nargs=1, required=True)
+@click.argument("creds", nargs=1, required=True)
+def sync(ctx, url, creds):
+    config = ctx.obj["config"]
+    print('>> WARNING: you are attempting to sync with a Google Sheet <<')
+    print('backman will ONLY track the directories specified in the sheet')
+    print('Directories specified in the Backfile will NOT be tracked!')
+    resp = prompt_choice('Proceed? (y/[n]): ', ['n', 'no', 'y', 'yes', ''])
+    if resp in ['n', 'no', '']:
+        sys.exit(0)
+
+    if not creds or creds == '':
+        print(f'ERROR: invalid path to Google Sheet credentials file: {creds}')
+        print('Please create a valid credentials file on the Google Cloud Console and re-run.')
+        sys.exit(-1)
+
+    creds = pathlib.Path(creds)
+    if not creds.is_file():
+        print(f'ERROR: invalid path to Google Sheet credentials file: {creds}')
+        print('Please create a valid credentials file on the Google Cloud Console and re-run.')
+        sys.exit(-1)
+
+    if not url or url == '' or not 'docs.google.com/spreadsheets' in url:
+        print(f'ERROR: invalid spreadsheet URL: {url}')
+        sys.exit(-1)
+    else:
+        try:
+            # authenticate
+            scopes = [
+                "https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive"
+            ]
+            credentials = Credentials.from_service_account_file(creds, scopes=scopes)
+            gc = gspread.authorize(credentials)
+
+            # open sheet
+            sh = gc.open_by_url(url)
+
+        except Exception as e:
+            print(f'Could not access the sheet at {url}: {e}')
+            sys.exit(-1)
+
+    print(f'Successfully synced with the sheet at {url}!')
+    config['google_sheet']['sheet_url'] = url
+    config['google_sheet']['sheet_credentials'] = creds
+
+    with open("backfile.yaml", "w") as f:
+        yaml.dump(config, f, default_flow_style=False)
+
+
+@cli.command()
+@click.pass_context
+def unsync(ctx):
+    config = ctx.obj["config"]
+    url = config['google_sheet']['sheet_url']
+    config['google_sheet']['sheet_url'] = ''
+    print(f'Successfully unsynced from the sheet at {url}.')
+    print('NOTE: backman will now ONLY track the directories specified in the Backfile!')
+
+    with open("backfile.yaml", "w") as f:
+        yaml.dump(config, f, default_flow_style=False)
+
+
+@cli.command()
+@click.pass_context
+def verify(ctx):
+    """Verify the integrity of uploaded files by computing checksums and comparing them with stored checksums in GCS"""
+    target_directories = ctx.obj["directories"]
+    config = ctx.obj["config"]
+    client = ctx.obj["client"]
+    sheet_url = config['google_sheet']['sheet_url']
+    sheet_creds = config['google_sheet']['sheet_credentials']
+    mismatched = {}
+    total_mismatched = 0
+
+    # if backman is synced with a Google Sheet, read directory information from it
+    if sheet_url != '':
+        _, target_directories = retrieve_google_sheet(sheet_url, sheet_creds)
+    
+    print('Computing CRC32c checksums of each file. This may take a while...')
+    # iterate over tracked directories and check for outdated/missing files
+    for directory in target_directories.keys():
+        print(f'Scanning {directory}...')
+        if not target_directories[directory]['active']:
+            continue
+        target_bucket = target_directories[directory]['bucket']
+        target_subdirs = target_directories[directory]['subdirs']
+        rel_directory = os.path.basename(directory)
+        counter = 1
+
+        for subdir in target_subdirs:
+            with console.status(f"[bold cyan][{subdir}][/bold cyan] Fetching manifest...", spinner="dots"):
+                items, _ = collect_files(directory, subdir)
+                gcp_items = retrieve_gcp_files(client, target_bucket, rel_directory, subdir)
+
+            failed_verification = {'missing': [], 'mismatch': []}
+
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[bold]{task.description}"),
+                BarColumn(),
+                MofNCompleteColumn(),
+                TextColumn("•"),
+                TimeElapsedColumn(),
+                console=console,
+            ) as progress:
+                task = progress.add_task(
+                    f"[{counter}/{len(target_subdirs)}] Verifying [bold]{subdir}[/bold]...",
+                    total=len(items),
+                )
+
+                for file in items:
+                    abs_path = file['path']
+                    rel_path = os.path.relpath(abs_path, directory)
+                    folder = os.path.basename(directory)
+                    remote_key = folder + '2/' + rel_path
+
+                    if remote_key not in gcp_items:
+                        failed_verification['missing'].append(file)
+                        total_mismatched += 1
+                        progress.advance(task)
+                        continue
+
+                    file_crc32c = file_crc32c_b64(abs_path)
+                    if file_crc32c != gcp_items[remote_key]["crc32c"]:
+                        total_mismatched += 1
+                        failed_verification['mismatch'].append(file)
+
+                    progress.advance(task)
+
+            if len(failed_verification['mismatch']) > 0 or len(failed_verification['missing']) > 0:
+                mismatched[subdir] = failed_verification
+            counter += 1
+
+    # alert the user to any files with mismatches and offer to reupload them
+    if len(mismatched) > 0:
+        print(f"\n======= {total_mismatched} ITEMS FAILED VERIFICATION =======\n")
+        if total_mismatched > 20:
+            # print compressed subdirectory overview
+            opt = prompt_choice(f"Print all {total_mismatched} items? (y/[n]): ", ['yes', 'y', 'no', 'n', ''])
+            if opt in ['no', 'n', '']:
+                print("Displaying summary of tracked directories:")
+                # iterate over directories with missing/outdated files and print how many files need to be updated
+                for dir in mismatched:
+                    mismatch = len(mismatched[dir]['mismatch'])
+                    missing = len(mismatched[dir]['missing'])
+                    print(f'- {dir}: {len(mismatched[dir])} files out of date')
+                    if mismatch > 0:
+                        print(f'  • {mismatch} files with checksum mismatch')
+                    if missing > 0:
+                        print(f'  • {missing} files missing')
+            else:
+                # print every file + reason for backing up
+                for dir in mismatched:
+                    print(f"{dir}:")
+                    if len(mismatched[dir]['mismatch']) > 0:
+                        print(" - checksum mismatch:")
+                        for file in mismatched[dir]['mismatch']:
+                            print(f"  • {file['path']}")
+                    if len(mismatched[dir]['missing']) > 0:
+                        print(" - missing:")
+                        for file in mismatched[dir]['missing']:
+                            print(f"  • {file['path']}")
+        else:
+            for dir in mismatched:
+                print(f"{dir}:")
+                if len(mismatched[dir]['mismatch']) > 0:
+                    print(" - checksum mismatch:")
+                    for file in mismatched[dir]['mismatch']:
+                        print(f"  • {file['path']}")
+                if len(mismatched[dir]['missing']) > 0:
+                    print(" - missing:")
+                    for file in mismatched[dir]['missing']:
+                        print(f"  • {file['path']}")
+    
+        resp = prompt_choice('Would you like to run `backman update` automatically to upload the mismatched/missing files? (y\[n]): ', ['y', 'yes', 'n', 'no', ''])
+        if resp in ['y', 'yes']:
+            update(ctx)
+
+        print()
+        sys.exit(0)
+    else:
+        print('All checksums matched!\n')
+        sys.exit(0)
+
+
+@cli.command()
+@click.pass_context
+@click.argument("dirs", nargs=-1, required=True)
+def restore(ctx, dirs):
+    def _fmt_bytes(n):
+        for unit in ("B", "KB", "MB", "GB"):
+            if n < 1024:
+                return f"{n:g} {unit}"
+            n /= 1024
+        return f"{n:g} TB"
+    
+    def _download_blobs(blobs, dest_dir, progress, task):
+        dest = pathlib.Path(dest_dir)
+        dest.mkdir(parents=True, exist_ok=True)
+
+        for blob in blobs:
+            out = dest / blob.name
+            out.parent.mkdir(parents=True, exist_ok=True)  # preserve subdirs
+            blob.download_to_filename(out)
+            progress.advance(task)
+
+
+    target_directories = ctx.obj["directories"]
+    config = ctx.obj["config"]
+    client = ctx.obj["client"]
+    sheet_url = config['google_sheet']['sheet_url']
+    sheet_creds = config['google_sheet']['sheet_credentials']
+    dirs_to_restore = {}
+    total_size = 0
+
+    # if backman is synced with a Google Sheet, read directory information from it
+    if sheet_url != '':
+        _, target_directories = retrieve_google_sheet(sheet_url, sheet_creds)
+
+    if len(dirs) == 0:
+        print('Usage: backman restore --dirs [directory1, directory1:subdirectory]')
+
+    for dir in dirs:
+        if dir == '*':
+            for directory in target_directories.keys():
+                dirs_to_restore[directory] = target_directories[directory]['subdirs']
+
+        if ':' in dir:
+            if len(dir.split(':')) != 2:
+                print('Please provide subdirectories as a list of [directory]:[subdirectory] pairs')
+                sys.exit(1)
+            directory, subdirectory = dir.split(':')
+            if not pathlib.Path(directory).is_dir():
+                print(f'{directory} is not a directory!')
+                sys.exit(1)
+            if subdirectory == '*':
+                dirs_to_restore[directory] = target_directories[directory]['subdirs']
+                continue
+            if directory in dirs_to_restore:
+                dirs_to_restore[directory].append(subdirectory)
+            else:
+                dirs_to_restore[directory] = [subdirectory]
+
+        else:
+            if dir in target_directories.keys():
+                dirs_to_restore[dir] = target_directories[dir]['subdirs']
+            else:
+                print(f'ERROR: {dir} is not a tracked directory')
+                sys.exit(1)
+
+    with console.status("[bold cyan]Calculating restore size...", spinner="dots"):
+        for dir in dirs_to_restore:
+            target_bucket = target_directories[dir]['bucket']
+            rel_directory = os.path.basename(dir)
+            for subdir in dirs_to_restore[dir]:
+                gcp_items = retrieve_gcp_files(client, target_bucket, rel_directory, subdir, return_blobs=False)
+                for item in gcp_items:
+                    total_size += gcp_items[item]['size']
+
+    total_memory = _fmt_bytes(total_size)
+    _, _, free_disk = shutil.disk_usage(".")
+    if total_size > free_disk:
+        console.print(f'[red]ERROR:[/red] {_fmt_bytes(free_disk)} available on disk, but restoration requires {total_memory}')
+        sys.exit(1)
+
+    resp = prompt_choice(f'Restoring the backups will take up {total_memory} on disk. Proceed? (y/[n]): ', ['y', 'yes', 'n', 'no', ''])
+    if resp in ['no', 'n', '']:
+        sys.exit(0)
+
+    for dir in dirs_to_restore:
+        current_dirs = [p for p in pathlib.Path.cwd().iterdir() if p.is_dir()]
+        rel_directory = os.path.basename(dir)
+        target_bucket = target_directories[dir]['bucket']
+        if dir in current_dirs:
+            dirname = dir + '_backup'
+            counter = 0
+            while dirname in current_dirs:
+                dirname += str(counter)
+        else:
+            dirname = dir
+
+        pathlib.Path(dirname).mkdir()
+
+        for subdir in dirs_to_restore[dir]:
+            subdir_dest = pathlib.Path(dirname) / subdir
+            subdir_dest.mkdir()
+
+            blobs = list(retrieve_gcp_files(client, target_bucket, rel_directory, subdir, return_blobs=True))
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[bold blue]{task.description}"),
+                BarColumn(),
+                MofNCompleteColumn(),
+                TextColumn("•"),
+                TimeElapsedColumn(),
+                console=console,
+            ) as progress:
+                task = progress.add_task(f"Restoring [bold]{subdir}[/bold]...", total=len(blobs))
+                _download_blobs(blobs, subdir_dest, progress, task)
+
+    console.print("[green]✓[/green] All backups restored.")
+
+
+@cli.command()
+@click.pass_context
+def history(ctx):
+    # TODO
+    # incorporate history doc writing
+    # read and display history doc
+
+    pass
+
+
+@cli.command()
+@click.argument("cron", nargs=-1, required=True)
+def schedule(cron):
+    """
+    Parses and validates a CRON_STRING.
+    
+    Example: cron-tool "*/15 * * * *"
+    Or:      cron-tool * * * * *
+    """
+
+    if os.getuid() != 0:
+        print("`backman schedule` requires root privileges to add shared cron jobs. Please re-run the command with sudo.")
+
+    # Join parts into a single string (handles space-separated input automatically)
+    cron_string = " ".join(cron)
+
+    if not croniter.is_valid(cron_string):
+        click.secho(f"Error: '{cron_string}' is not a valid cron expression.", fg="red", err=True)
+        raise click.Abort()
+
+    cron = CronTab(user=True)
+    
+    # Define the command (use sys.executable to ensure the same Python env is used)
+    # Use absolute paths for your script!
+    script_path = pathlib.Path(__file__).resolve()
+    command = f"{sys.executable} {script_path} update >> {script_path}.log 2>&1"
+    
+    # Create a new job (avoid duplicates by checking for a unique comment)
+    job_comment = "regular_backman_job"
+    cron.remove_all(comment=job_comment) # Clean up old versions
+    
+    job = cron.new(command=command, comment=job_comment)
+    
+    # Set the schedule (SemVer-style frequency)
+    job.setall(cron_string)
+    
+    # Write to the system crontab
+    cron.write()
+    print("Cron job scheduled successfully.")
+
+
+@cli.command()
+def unschedule():
+    if os.getuid() != 0:
+        print("`backman unschedule` requires root privileges to remove shared cron jobs. Please re-run the command with sudo.")
+
+    cron = CronTab(user=True)
+    # Create a new job (avoid duplicates by checking for a unique comment)
+    job_comment = "regular_backman_job"
+    jobs = list(cron.find_comment(job_comment))
+    if jobs:
+        cron.remove_all(comment=job_comment) # Clean up old versions
+        job = jobs[0]
+        schedule = job.slices.render()
+        print(f"Removed scheduled cron job ({schedule})")
+    else:
+        print("No cron jobs scheduled!")
+    
+    # Write to the system crontab
+    cron.write()
+
+
+@cli.command()
+def next():
+    if os.getuid() != 0:
+        print("`backman next` requires root privileges to view shared cron jobs. Please re-run the command with sudo.")
+
+    cron = CronTab(user=True)
+    # Create a new job (avoid duplicates by checking for a unique comment)
+    job_comment = "regular_backman_job"
+    jobs = list(cron.find_comment(job_comment))
+    if jobs:
+        job = jobs[0]
+        schedule = job.slices.render()
+        now = datetime.now()
+        iter = croniter(schedule, now)
+        next_run = iter.get_next(datetime)
+        print(f"Next scheduled run: {next_run.strftime('%Y-%m-%d %H:%M:%S')}")
+    else:
+        print("No cron jobs scheduled!")
+
+
+@cli.command()
+def help():
+    print("""
+      ------------------------------------------------------------------
+      ██████╗  █████╗  ██████╗██╗  ██╗     ███╗   ███╗ █████╗ ███╗   ██╗    
+      ██╔══██╗██╔══██╗██╔════╝██║ ██╔╝     ████╗ ████║██╔══██╗████╗  ██║   
+      ██████╔╝███████║██║     █████╔╝█████╗██╔████╔██║███████║██╔██╗ ██║  
+      ██╔══██╗██╔══██║██║     ██╔═██╗╚════╝██║╚██╔╝██║██╔══██║██║╚██╗██║  
+      ██████╔╝██║  ██║╚██████╗██║  ██╗     ██║ ╚═╝ ██║██║  ██║██║ ╚████║  
+      ╚═════╝ ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝     ╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝
+      -------------------- Back-man wird backen 🥧 ---------------------
+
+  backman — automated lab data backup tool                                                                                           
+                                                                                                                                     
+  USAGE                                                                                                                              
+    backman <command> [options]                                                                                                      
+                  
+  COMMANDS
+
+    Setup
+    ─────────────────────────────────────────────────────────────────────
+    init                         Initialize a new Backfile in the current directory                                                  
+    set auth <auth_file>         Set the GCP credentials JSON file
+    set bucket <dir>:<bucket> .. Assign a GCS bucket to a directory (* for all)                                                      
+    sync <url> <creds>           Sync directory config from a Google Sheet                                                           
+    unsync                       Remove Google Sheet sync; use Backfile only                                                         
+                                                                                                                                     
+    Tracking      
+    ─────────────────────────────────────────────────────────────────────                                                            
+    add <dir>:<subdir> ...       Add a directory/subdirectory pair to tracking
+    add --file <file>            Add directories listed in a file (one per line)                                                     
+    exclude <dir> ...            Pause tracking for specified directories                                                            
+    include <dir> ...            Resume tracking for specified directories                                                           
+    config                       Display current Backfile / Google Sheet config                                                      
+                  
+    Backup & Restore                                                                                                                 
+    ─────────────────────────────────────────────────────────────────────
+    status                       Show outdated/missing files across tracked dirs                                                     
+    update                       Upload missing or changed files to GCS                                                              
+      --all                        Re-upload all files regardless of change status
+      --jobs <n>      (default 4)  Parallel upload workers                                                                                                           
+    verify                       Compare local CRC32c checksums against GCS                                                          
+    restore <dir> ...            Download backup from GCS to local disk                                                              
+      <dir>:<subdir>               Restore a specific subdirectory                                                                   
+      <dir>:*                      Restore all subdirs for a directory                                                               
+      *                            Restore all tracked directories                                                                   
+                                                                                                                                     
+  NOTES                                                                                                                              
+    - Requires a GCP service account JSON key; set with: backman set <auth_file>
+    - Directory format for add/restore: /absolute/path/to/dir:subdirname                                                             
+    - Backfile (backfile.yaml) must exist in the working directory for most commands
+            
+    """)
+    sys.exit(0)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,15 @@
 # authentication file location
 authentication_file: ./auth_file.json
 
+google_sheet:
+  sheet_url:
+  sheet_credentials:
+
+cron:
+  tracking:
+  user:
+  schedule:
+
 # directories list
 directories:
   /data/slidetag:
