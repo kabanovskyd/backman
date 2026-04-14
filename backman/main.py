@@ -883,25 +883,25 @@ def sync(ctx, url, creds):
         print(f'ERROR: invalid spreadsheet URL: {url}')
         sys.exit(1)
 
-    #try:
-    # authenticate
-    scopes = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive"
-    ]
-    credentials = Credentials.from_service_account_file(creds, scopes=scopes)
-    gc = gspread.authorize(credentials)
+    try:
+        # authenticate
+        scopes = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive"
+        ]
+        credentials = Credentials.from_service_account_file(creds, scopes=scopes)
+        gc = gspread.authorize(credentials)
 
-    # open sheet
-    sh = gc.open_by_url(url)
+        # open sheet
+        sh = gc.open_by_url(url)
 
-    #except Exception as e:
-    #    print(f'Could not access the sheet at {url}: {e}')
-    #    sys.exit(1)
+    except Exception as e:
+        print(f'Could not access the sheet at {url}: {e}')
+        sys.exit(1)
 
     print(f'Successfully synced with the sheet at {url}!')
     config['google_sheet']['sheet_url'] = url
-    config['google_sheet']['sheet_credentials'] = creds
+    config['google_sheet']['sheet_credentials'] = str(creds)
 
     with open("backfile.yaml", "w") as f:
         yaml.dump(config, f, default_flow_style=False)
