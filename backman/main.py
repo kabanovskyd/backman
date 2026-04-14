@@ -319,7 +319,7 @@ def collect_files(root: str, subdir: str,) -> list[dict]:
 @click.group(add_help_option=False)                
 @click.version_option(version=get_version(), prog_name="backman")                                                                                
 @click.option("--help", is_flag=True, is_eager=True, expose_value=False,
-              callback=manual, help="Show this message and exit.") 
+              callback=manual) #, help="Show this message and exit.") 
 @click.pass_context
 def cli(ctx):
     """backman — automated lab data backup tool."""
