@@ -424,7 +424,7 @@ def status(ctx):
 
         for subdir in target_subdirs:
             if subdir == 'ALL':
-                target_subdirs = [item for item in pathlib.Path(directory).glob() if item.is_dir()]
+                target_subdirs = [item for item in pathlib.Path(directory).glob('') if item.is_dir()]
                 continue
             with console.status(f"[bold cyan][{subdir}][/bold cyan] Scanning...", spinner="dots"):
                 items, skipped = collect_files(directory, subdir)
