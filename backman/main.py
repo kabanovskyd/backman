@@ -902,9 +902,11 @@ def sync(ctx, url, creds):
     print(f'Successfully synced with the sheet at {url}!')
     config['google_sheet']['sheet_url'] = url
     config['google_sheet']['sheet_credentials'] = str(creds)
+    print(config['google_sheet']['sheet_credentials'])
+    print(type(config['google_sheet']['sheet_credentials']))
 
     with open("backfile.yaml", "w") as f:
-        yaml.dump(config, f, default_flow_style=False)
+        yaml.safe_dump(config, f, default_flow_style=False)
 
 
 @cli.command()
