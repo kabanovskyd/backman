@@ -871,33 +871,33 @@ def sync(ctx, url, creds):
     if not creds or creds == '':
         print(f'ERROR: invalid path to Google Sheet credentials file: {creds}')
         print('Please create a valid credentials file on the Google Cloud Console and re-run.')
-        sys.exit(-1)
+        sys.exit(1)
 
     creds = pathlib.Path(creds)
     if not creds.is_file():
         print(f'ERROR: invalid path to Google Sheet credentials file: {creds}')
         print('Please create a valid credentials file on the Google Cloud Console and re-run.')
-        sys.exit(-1)
+        sys.exit(1)
 
     if not url or url == '' or not 'docs.google.com/spreadsheets' in url:
         print(f'ERROR: invalid spreadsheet URL: {url}')
-        sys.exit(-1)
-    else:
-        try:
-            # authenticate
-            scopes = [
-                "https://www.googleapis.com/auth/spreadsheets",
-                "https://www.googleapis.com/auth/drive"
-            ]
-            credentials = Credentials.from_service_account_file(creds, scopes=scopes)
-            gc = gspread.authorize(credentials)
+        sys.exit(1)
 
-            # open sheet
-            sh = gc.open_by_url(url)
+    #try:
+    # authenticate
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
+    credentials = Credentials.from_service_account_file(creds, scopes=scopes)
+    gc = gspread.authorize(credentials)
 
-        except Exception as e:
-            print(f'Could not access the sheet at {url}: {e}')
-            sys.exit(-1)
+    # open sheet
+    sh = gc.open_by_url(url)
+
+    #except Exception as e:
+    #    print(f'Could not access the sheet at {url}: {e}')
+    #    sys.exit(1)
 
     print(f'Successfully synced with the sheet at {url}!')
     config['google_sheet']['sheet_url'] = url
