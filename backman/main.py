@@ -203,7 +203,7 @@ def upload_parallel(bucket_name, items, directory, rel_directory, max_workers, b
     def upload_one(item, bar_handler, task):
         local_path = item["path"]
         rel_path = os.path.relpath(local_path, directory)
-        remote_uri = f"gs://{bucket_name}/{rel_directory}2/{rel_path}"
+        remote_uri = f"gs://{bucket_name}/{rel_directory}/{rel_path}"
         try:
             result = subprocess.run(
                 ["gcloud", "storage", "cp", local_path, remote_uri],
@@ -245,7 +245,7 @@ def find_files_to_upload(
         abs_path = file['path']
         rel_path = os.path.relpath(abs_path, directory)
         folder = os.path.basename(directory)
-        remote_key = folder + '2/' + rel_path
+        remote_key = folder + '/' + rel_path
 
         if remote_key not in remote_manifest:
             to_upload.append({**file, "reason": "missing"})
@@ -267,7 +267,7 @@ def retrieve_gcp_files(
     return_blobs=False
 ) -> dict:
 
-    blobs = client.list_blobs(bucket, prefix=f"{directory}2/{subdir}/")
+    blobs = client.list_blobs(bucket, prefix=f"{directory}/{subdir}/")
     manifest = {}
 
     if return_blobs:
@@ -972,7 +972,7 @@ def verify(ctx):
                     abs_path = file['path']
                     rel_path = os.path.relpath(abs_path, directory)
                     folder = os.path.basename(directory)
-                    remote_key = folder + '2/' + rel_path
+                    remote_key = folder + '/' + rel_path
 
                     if remote_key not in gcp_items:
                         failed_verification['missing'].append(file)
