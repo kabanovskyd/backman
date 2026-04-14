@@ -376,6 +376,12 @@ def cli(ctx):
     if 'sheet_credentials' not in config['google_sheet']:
         config['google_sheet']['sheet_credentials'] = ''
 
+    if config['google_sheet']['sheet_credentials'] is None:
+        config['google_sheet']['sheet_credentials'] = ''
+    
+    if config['google_sheet']['sheet_url'] is None:
+        config['google_sheet']['sheet_url'] = ''
+
     with open("backfile.yaml", "w") as f:
         yaml.dump(config, f, default_flow_style=False)
 
