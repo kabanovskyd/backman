@@ -186,7 +186,7 @@ def retrieve_google_sheet(sheet_url, cred_path):
             sys.exit(1)
         target_directories[dir]['bucket'] = upload_bucket[0]
         target_directories[dir]['active'] = True
-        target_directories[dir]['subdirs'] = status_df[status_df['Directory'] == dir].tolist()
+        target_directories[dir]['subdirs'] = status_df[status_df['Directory'] == dir]['subdirs'].tolist()
 
     return pd.DataFrame(ws.get_all_records()), target_directories
 
