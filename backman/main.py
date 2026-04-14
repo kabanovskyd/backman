@@ -423,6 +423,7 @@ def status(ctx):
         rel_directory = os.path.basename(directory)
 
         for subdir in target_subdirs:
+            print(subdir)
             if subdir == 'ALL':
                 #subdir = '*'
                 target_subdirs = [item for item in pathlib.Path(directory).glob('*') if item.is_dir()]
