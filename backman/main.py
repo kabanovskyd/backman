@@ -700,24 +700,24 @@ def config(ctx):
             print(f'\nTracked directories:')
             tracked_dirs = df[df['Tracked'] == 'YES']['Directory'].unique().tolist()
             for dir in tracked_dirs:
-                tracked_subdirs = df.loc[(df['Directory'] == dir) & (df['Tracked'] == 'YES')]['Subdirectory']
+                tracked_subdirs = df.loc[(df['Directory'] == dir) & (df['Tracked'] == 'YES')]
                 bucket = tracked_subdirs['Bucket'].tolist()[0]
                 print(f'\n• {dir}')
                 print(f'  bucket: {bucket}')
                 print('  subdirs:')
-                for subdir in tracked_subdirs:
+                for subdir in tracked_subdirs['Subdirectory'].tolist():
                     print(f'   - {subdir}')
 
         if 'NO' in df['Tracked']:
             print(f'\nUntracked directories:')
             tracked_dirs = df[df['Tracked'] == 'NO']['Directory'].unique().tolist()
             for dir in tracked_dirs:
-                tracked_subdirs = df.loc[(df['Directory'] == dir) & (df['Tracked'] == 'NO')]['Subdirectory']
+                tracked_subdirs = df.loc[(df['Directory'] == dir) & (df['Tracked'] == 'NO')]
                 bucket = tracked_subdirs['Bucket'].tolist()[0]
                 print(f'\n• {dir}')
                 print(f'  bucket: {bucket}')
                 print('  subdirs:')
-                for subdir in tracked_subdirs:
+                for subdir in tracked_subdirs['Subdirectory'].tolist():
                     print(f'   - {subdir}')
                 
         sys.exit(0)   
