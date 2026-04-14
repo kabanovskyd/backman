@@ -697,6 +697,7 @@ def config(ctx):
         print('\n============= GOOGLE SHEET SUMMARY =============')
         df, _ = retrieve_google_sheet(sheet_url, sheet_creds)
         print(df)
+        print(df['Tracked'])
         if 'YES' in df['Tracked']:
             print(f'\nTracked directories:')
             tracked_dirs = df[df['Tracked'] == 'YES']['Directory'].unique().tolist()
