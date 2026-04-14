@@ -53,6 +53,61 @@ EXCLUDE_DIRS = {
 }
 
 
+def manual():
+    print("""
+      ------------------------------------------------------------------
+      ██████╗  █████╗  ██████╗██╗  ██╗     ███╗   ███╗ █████╗ ███╗   ██╗    
+      ██╔══██╗██╔══██╗██╔════╝██║ ██╔╝     ████╗ ████║██╔══██╗████╗  ██║   
+      ██████╔╝███████║██║     █████╔╝█████╗██╔████╔██║███████║██╔██╗ ██║  
+      ██╔══██╗██╔══██║██║     ██╔═██╗╚════╝██║╚██╔╝██║██╔══██║██║╚██╗██║  
+      ██████╔╝██║  ██║╚██████╗██║  ██╗     ██║ ╚═╝ ██║██║  ██║██║ ╚████║  
+      ╚═════╝ ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝     ╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝
+      -------------------- Back-man wird backen 🥧 ---------------------
+
+  backman — automated lab data backup tool                                                                                           
+                                                                                                                                     
+  USAGE                                                                                                                              
+    backman <command> [options]                                                                                                      
+                  
+  COMMANDS
+
+    Setup
+    ─────────────────────────────────────────────────────────────────────
+    init                         Initialize a new Backfile in the current directory                                                  
+    set auth <auth_file>         Set the GCP credentials JSON file
+    set bucket <dir>:<bucket> .. Assign a GCS bucket to a directory (* for all)                                                      
+    sync <url> <creds>           Sync directory config from a Google Sheet                                                           
+    unsync                       Remove Google Sheet sync; use Backfile only                                                         
+                                                                                                                                     
+    Tracking      
+    ─────────────────────────────────────────────────────────────────────                                                            
+    add <dir>:<subdir> ...       Add a directory/subdirectory pair to tracking
+    add --file <file>            Add directories listed in a file (one per line)                                                     
+    exclude <dir> ...            Pause tracking for specified directories                                                            
+    include <dir> ...            Resume tracking for specified directories                                                           
+    config                       Display current Backfile / Google Sheet config                                                      
+                  
+    Backup & Restore                                                                                                                 
+    ─────────────────────────────────────────────────────────────────────
+    status                       Show outdated/missing files across tracked dirs                                                     
+    update                       Upload missing or changed files to GCS                                                              
+      --all                        Re-upload all files regardless of change status
+      --jobs <n>      (default 4)  Parallel upload workers                                                                                                           
+    verify                       Compare local CRC32c checksums against GCS                                                          
+    restore <dir> ...            Download backup from GCS to local disk                                                              
+      <dir>:<subdir>               Restore a specific subdirectory                                                                   
+      <dir>:*                      Restore all subdirs for a directory                                                               
+      *                            Restore all tracked directories                                                                   
+                                                                                                                                     
+  NOTES                                                                                                                              
+    - Requires a GCP service account JSON key; set with: backman set <auth_file>
+    - Directory format for add/restore: /absolute/path/to/dir:subdirname                                                             
+    - Backfile (backfile.yaml) must exist in the working directory for most commands
+            
+    """)
+    sys.exit(0)
+
+
 def get_version():
     """
     Retrieve project version
@@ -264,7 +319,7 @@ def collect_files(root: str, subdir: str,) -> list[dict]:
 @click.group(add_help_option=False)                
 @click.version_option(version=get_version(), prog_name="backman")                                                                                
 @click.option("--help", is_flag=True, is_eager=True, expose_value=False,
-              callback=help, help="Show this message and exit.") 
+              callback=manual, help="Show this message and exit.") 
 @click.pass_context
 def cli(ctx):
     """backman — automated lab data backup tool."""
@@ -967,7 +1022,7 @@ def verify(ctx):
                     for file in mismatched[dir]['missing']:
                         print(f"  • {file['path']}")
     
-        resp = prompt_choice('Would you like to run `backman update` automatically to upload the mismatched/missing files? (y\[n]): ', ['y', 'yes', 'n', 'no', ''])
+        resp = prompt_choice('Would you like to run `backman update` automatically to upload the mismatched/missing files? (y/[n]): ', ['y', 'yes', 'n', 'no', ''])
         if resp in ['y', 'yes']:
             update(ctx)
 
@@ -1186,62 +1241,6 @@ def next():
         print(f"Next scheduled run: {next_run.strftime('%Y-%m-%d %H:%M:%S')}")
     else:
         print("No cron jobs scheduled!")
-
-
-@cli.command()
-def manual():
-    print("""
-      ------------------------------------------------------------------
-      ██████╗  █████╗  ██████╗██╗  ██╗     ███╗   ███╗ █████╗ ███╗   ██╗    
-      ██╔══██╗██╔══██╗██╔════╝██║ ██╔╝     ████╗ ████║██╔══██╗████╗  ██║   
-      ██████╔╝███████║██║     █████╔╝█████╗██╔████╔██║███████║██╔██╗ ██║  
-      ██╔══██╗██╔══██║██║     ██╔═██╗╚════╝██║╚██╔╝██║██╔══██║██║╚██╗██║  
-      ██████╔╝██║  ██║╚██████╗██║  ██╗     ██║ ╚═╝ ██║██║  ██║██║ ╚████║  
-      ╚═════╝ ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝     ╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝
-      -------------------- Back-man wird backen 🥧 ---------------------
-
-  backman — automated lab data backup tool                                                                                           
-                                                                                                                                     
-  USAGE                                                                                                                              
-    backman <command> [options]                                                                                                      
-                  
-  COMMANDS
-
-    Setup
-    ─────────────────────────────────────────────────────────────────────
-    init                         Initialize a new Backfile in the current directory                                                  
-    set auth <auth_file>         Set the GCP credentials JSON file
-    set bucket <dir>:<bucket> .. Assign a GCS bucket to a directory (* for all)                                                      
-    sync <url> <creds>           Sync directory config from a Google Sheet                                                           
-    unsync                       Remove Google Sheet sync; use Backfile only                                                         
-                                                                                                                                     
-    Tracking      
-    ─────────────────────────────────────────────────────────────────────                                                            
-    add <dir>:<subdir> ...       Add a directory/subdirectory pair to tracking
-    add --file <file>            Add directories listed in a file (one per line)                                                     
-    exclude <dir> ...            Pause tracking for specified directories                                                            
-    include <dir> ...            Resume tracking for specified directories                                                           
-    config                       Display current Backfile / Google Sheet config                                                      
-                  
-    Backup & Restore                                                                                                                 
-    ─────────────────────────────────────────────────────────────────────
-    status                       Show outdated/missing files across tracked dirs                                                     
-    update                       Upload missing or changed files to GCS                                                              
-      --all                        Re-upload all files regardless of change status
-      --jobs <n>      (default 4)  Parallel upload workers                                                                                                           
-    verify                       Compare local CRC32c checksums against GCS                                                          
-    restore <dir> ...            Download backup from GCS to local disk                                                              
-      <dir>:<subdir>               Restore a specific subdirectory                                                                   
-      <dir>:*                      Restore all subdirs for a directory                                                               
-      *                            Restore all tracked directories                                                                   
-                                                                                                                                     
-  NOTES                                                                                                                              
-    - Requires a GCP service account JSON key; set with: backman set <auth_file>
-    - Directory format for add/restore: /absolute/path/to/dir:subdirname                                                             
-    - Backfile (backfile.yaml) must exist in the working directory for most commands
-            
-    """)
-    sys.exit(0)
 
 
 if __name__ == "__main__":
