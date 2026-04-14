@@ -405,7 +405,7 @@ def status(ctx):
     skipped_items = []
 
     # if backman is synced with a Google Sheet, read directory information from it
-    if sheet_url != '':
+    if sheet_url.strip() != '':
         _, target_directories = retrieve_google_sheet(sheet_url, sheet_creds)
     
     # iterate over tracked directories and check for outdated/missing files
@@ -487,7 +487,7 @@ def update(ctx, jobs, upload_all):
     all_skipped = []
 
     # if backman is synced with a Google Sheet, read directory information from it
-    if sheet_url != '':
+    if sheet_url.strip() != '':
         df, target_directories = retrieve_google_sheet(sheet_url, sheet_creds)
 
     # iterate over tracked directories and back up outdated/missing files
@@ -562,7 +562,7 @@ def exclude(ctx, dirs):
     sheet_url = config['google_sheet']['sheet_url']
     sheet_creds = config['google_sheet']['sheet_credentials']
 
-    if sheet_url != '':
+    if sheet_url.strip() != '':
         print(f'Updating the values in the Google Sheet at {sheet_url}...')
         df, _ = retrieve_google_sheet(sheet_url, sheet_creds)
         for dir in dirs:
@@ -687,7 +687,7 @@ def config(ctx):
     sheet_url = config['google_sheet']['sheet_url']
     sheet_creds = config['google_sheet']['sheet_credentials']
 
-    if sheet_url != '':
+    if sheet_url.strip() != '':
         print('\n============= GOOGLE SHEET SUMMARY =============')
         df, _ = retrieve_google_sheet(sheet_url, sheet_creds)
         if 'YES' in df['Tracked']:
