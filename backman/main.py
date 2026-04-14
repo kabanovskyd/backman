@@ -423,6 +423,9 @@ def status(ctx):
         rel_directory = os.path.basename(directory)
 
         for subdir in target_subdirs:
+            if subdir == 'ALL':
+                target_subdirs = [item for item in pathlib.Path(directory).glob() if item.is_dir()]
+                continue
             with console.status(f"[bold cyan][{subdir}][/bold cyan] Scanning...", spinner="dots"):
                 items, skipped = collect_files(directory, subdir)
                 skipped_items.extend(skipped)
@@ -720,6 +723,7 @@ def config(ctx):
                 for subdir in tracked_subdirs['Subdirectory'].tolist():
                     print(f'   - {subdir}')
                 
+        print()
         sys.exit(0)   
 
 
@@ -753,7 +757,9 @@ def config(ctx):
                 print(f'  subdirs:')
                 for subdir in directory['subdirs']:
                     print(f'   - {subdir}')
+
     print()
+    sys.exit(0)
 
 
 @cli.command()
