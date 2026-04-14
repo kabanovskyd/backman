@@ -424,8 +424,9 @@ def status(ctx):
 
         for subdir in target_subdirs:
             if subdir == 'ALL':
-                target_subdirs = [item for item in pathlib.Path(directory).glob('*') if item.is_dir()]
-                continue
+                subdir = '*'
+                #target_subdirs = [item for item in pathlib.Path(directory).glob('*') if item.is_dir()]
+                #continue
             with console.status(f"[bold cyan][{subdir}][/bold cyan] Scanning...", spinner="dots"):
                 items, skipped = collect_files(directory, subdir)
                 skipped_items.extend(skipped)
@@ -448,7 +449,7 @@ def status(ctx):
         print("\n======= OUTDATED ITEMS =======\n")
         if total_items > 20:
             # print compressed subdirectory overview
-            opt = prompt_choice(f"Print all {len(total_items)} items? (y/[n]): ", ['yes', 'y', 'no', 'n', ''])
+            opt = prompt_choice(f"Print all {total_items} items? (y/[n]): ", ['yes', 'y', 'no', 'n', ''])
             if opt in ['no', 'n', '']:
                 print("Displaying summary of tracked directories:")
                 # iterate over directories with missing/outdated files and print how many files need to be updated
