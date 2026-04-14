@@ -54,6 +54,10 @@ EXCLUDE_DIRS = {
 
 
 def manual(ctx, param, value):
+
+    if not value or ctx.resilient_parsing:
+        return
+
     print("""
       ------------------------------------------------------------------
       ██████╗  █████╗  ██████╗██╗  ██╗     ███╗   ███╗ █████╗ ███╗   ██╗    
