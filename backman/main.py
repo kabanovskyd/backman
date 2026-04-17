@@ -148,7 +148,6 @@ def file_crc32c_b64(
 
 
 def retrieve_google_sheet(sheet_url, cred_path):
-    print(f'Reading status information from sheet at {sheet_url}...')
     try:
         # authenticate
         scopes = [
@@ -189,7 +188,7 @@ def retrieve_google_sheet(sheet_url, cred_path):
         target_directories[dir]['active'] = True
         target_directories[dir]['subdirs'] = status_df[status_df['Directory'] == dir]['Subdirectory'].tolist()
 
-    return pd.DataFrame(ws.get_all_records()), target_directories
+    return ws, pd.DataFrame(ws.get_all_records()), target_directories
 
 
 def prompt_choice(prompt, valid_options):
@@ -414,7 +413,7 @@ def status(ctx):
 
     # if backman is synced with a Google Sheet, read directory information from it
     if sheet_url.strip() != '':
-        _, target_directories = retrieve_google_sheet(sheet_url, sheet_creds)
+        _, _, target_directories = retrieve_google_sheet(sheet_url, sheet_creds)
     
     # iterate over tracked directories and check for outdated/missing files
     for directory in target_directories:
@@ -501,7 +500,7 @@ def update(ctx, jobs, upload_all):
 
     # if backman is synced with a Google Sheet, read directory information from it
     if sheet_url.strip() != '':
-        df, target_directories = retrieve_google_sheet(sheet_url, sheet_creds)
+        _, df, target_directories = retrieve_google_sheet(sheet_url, sheet_creds)
 
     # iterate over tracked directories and back up outdated/missing files
     for directory in target_directories.keys():
@@ -577,11 +576,11 @@ def exclude(ctx, dirs):
 
     if sheet_url.strip() != '':
         print(f'Updating the values in the Google Sheet at {sheet_url}...')
-        df, _ = retrieve_google_sheet(sheet_url, sheet_creds)
+        ws, df, _ = retrieve_google_sheet(sheet_url, sheet_creds)
         for dir in dirs:
-            rows_to_update = df[df['Directory'] == dir]
-            for _, row in rows_to_update.iterrows():
-                row['Tracked'] = 'NO'
+            for ind, row in df.iterrows():
+                if row['Directory'] == dir:
+                    ws.update_cell(ind + 1, 1, 'NO')
         sys.exit(0)
 
     if any(directory not in config['directories'] for directory in dirs):
@@ -614,11 +613,11 @@ def include(ctx, dirs):
 
     if sheet_url != '':
         print(f'Updating the values in the Google Sheet at {sheet_url}...')
-        df, _ = retrieve_google_sheet(sheet_url, sheet_creds)
+        ws, df, _ = retrieve_google_sheet(sheet_url, sheet_creds)
         for dir in dirs:
-            rows_to_update = df[df['Directory'] == dir]
-            for _, row in rows_to_update.iterrows():
-                row['Tracked'] = 'YES'
+            for ind, row in df.iterrows():
+                if row['Directory'] == dir:
+                    ws.update_cell(ind + 1, 1, 'YES')
         sys.exit(0)
 
     if any(directory not in config['directories'] for directory in dirs):
@@ -702,7 +701,7 @@ def config(ctx):
 
     if sheet_url.strip() != '':
         print('\n============= GOOGLE SHEET SUMMARY =============')
-        df, _ = retrieve_google_sheet(sheet_url, sheet_creds)
+        _, df, _ = retrieve_google_sheet(sheet_url, sheet_creds)
         if 'YES' in df['Tracked'].tolist():
             print(f'\nTracked directories:')
             tracked_dirs = df[df['Tracked'] == 'YES']['Directory'].unique().tolist()
@@ -946,7 +945,7 @@ def verify(ctx):
 
     # if backman is synced with a Google Sheet, read directory information from it
     if sheet_url != '':
-        _, target_directories = retrieve_google_sheet(sheet_url, sheet_creds)
+        _, _, target_directories = retrieve_google_sheet(sheet_url, sheet_creds)
     
     print('Computing CRC32c checksums of each file. This may take a while...')
     # iterate over tracked directories and check for outdated/missing files
@@ -1087,7 +1086,7 @@ def restore(ctx, dirs):
 
     # if backman is synced with a Google Sheet, read directory information from it
     if sheet_url != '':
-        _, target_directories = retrieve_google_sheet(sheet_url, sheet_creds)
+        _, _, target_directories = retrieve_google_sheet(sheet_url, sheet_creds)
 
     if len(dirs) == 0:
         print('Usage: backman restore --dirs [directory1, directory1:subdirectory]')
