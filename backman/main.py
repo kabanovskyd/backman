@@ -550,7 +550,7 @@ def update(ctx, jobs, upload_all):
                 )
             if upload_success and sheet_url != '':
                 # update the `Last Backup` column in the Google Sheet with the latest backup date/time
-                now = datetime.datetime.now()
+                now = datetime.now()
                 df.loc[(df['Directory'] == directory) & (df['Subdirectory'] == subdir), 'Last Backup'] = now.strftime("%Y-%m-%d %H:%M")
 
     # list any files that were skipped
