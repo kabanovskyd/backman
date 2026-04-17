@@ -580,7 +580,7 @@ def exclude(ctx, dirs):
         for dir in dirs:
             for ind, row in df.iterrows():
                 if row['Directory'] == dir:
-                    ws.update_cell(ind + 1, 1, 'NO')
+                    ws.update_cell(ind + 2, 1, 'NO')
         sys.exit(0)
 
     if any(directory not in config['directories'] for directory in dirs):
@@ -617,7 +617,7 @@ def include(ctx, dirs):
         for dir in dirs:
             for ind, row in df.iterrows():
                 if row['Directory'] == dir:
-                    ws.update_cell(ind + 1, 1, 'YES')
+                    ws.update_cell(ind + 2, 1, 'YES')
         sys.exit(0)
 
     if any(directory not in config['directories'] for directory in dirs):
