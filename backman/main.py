@@ -577,13 +577,12 @@ def exclude(ctx, dirs):
     if sheet_url.strip() != '':
         print(f'Updating the values in the Google Sheet at {sheet_url}...')
         ws, df, _ = retrieve_google_sheet(sheet_url, sheet_creds)
-        print(df)
         for dir in dirs:
+            if dir.endswith('/') and len(dir) != 1:
+                dir = dir[:-1]
             for ind, row in df.iterrows():
-                print(dir)
-                print(ind)
-                print(row)
-                if row['Directory'] == dir:
+                row_dir = row['Directory'][:-1] if row['Directory'].endswith('/') else row['Directory']
+                if row_dir == dir:
                     ws.update_cell(ind + 2, 1, 'NO')
         sys.exit(0)
 
@@ -619,8 +618,11 @@ def include(ctx, dirs):
         print(f'Updating the values in the Google Sheet at {sheet_url}...')
         ws, df, _ = retrieve_google_sheet(sheet_url, sheet_creds)
         for dir in dirs:
+            if dir.endswith('/') and len(dir) != 1:
+                dir = dir[:-1]
             for ind, row in df.iterrows():
-                if row['Directory'] == dir:
+                row_dir = row['Directory'][:-1] if row['Directory'].endswith('/') else row['Directory']
+                if row_dir == dir:
                     ws.update_cell(ind + 2, 1, 'YES')
         sys.exit(0)
 
