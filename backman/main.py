@@ -174,8 +174,9 @@ def retrieve_google_sheet(sheet_url, cred_path):
         print(f'ERROR: Google Sheet contains duplicate entries for {dup_dir}/{dup_subdir}')
         print('Please remove the duplicate rows and re-run the command.')
         sys.exit(1)
-    dirs = status_df['Directory'].unique().tolist()
     status_df = status_df[status_df['Tracked'] == 'YES']
+    dirs = status_df['Directory'].unique().tolist()
+
     target_directories = {}
     for dir in dirs:
         target_directories[dir] = {}

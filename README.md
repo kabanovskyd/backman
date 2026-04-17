@@ -1,4 +1,4 @@
-![Awesome logo](assets/backman-logo.png)
+![Awesome logo](backman-logo.png)
 # backman #
 A command-line tool for managing and automating lab data backups to Google Cloud Storage (GCS).
 
@@ -25,60 +25,80 @@ After installation, backman will be available as a system command.
 
 ### Setup ###
 Initialize a new backman configuration:
-`backman init`
-This will prompt you for:
-
-- Path to your GCP credentials JSON file
-- Directories to add to tracking
-- GCS bucket name(s)
-
-The configuration is saved to `backman.yaml` in the current directory.
+```bash
+backman init
+```
+Then set your GCP credentials file:
+```bash
+backman set auth /path/to/credentials.json
+```
+The configuration is saved to `backfile.yaml` in the current directory.
 
 ### Configuration ###
-`backman` stores its configuration in a `backman.yaml` configuration file (Backfile):
+`backman` stores its configuration in a `backfile.yaml` configuration file (Backfile):
 ```yaml
-bucket: my-backup-bucket
-credentials_path: /path/to/credentials.json
+authentication_file: /path/to/credentials.json
+google_sheet:
+  sheet_url: ''
+  sheet_credentials: ''
 directories:
   /data/lab/project1:
     bucket: backup_archive_1
     active: true
-    last_backup: "2026-03-10T14:23:00"
     subdirs:
       - subdirectory1
       - subdirectory2
   /data/lab/project2:
     bucket: backup_archive_2
     active: false
-    last_backup: "2026-01-05T09:00:00"
-    subdirs: *
+    subdirs:
+      - subdirectory1
 ```
 Backfiles can be edited manually, but it is generally recommended to interact with them only through `backman` commands as this is guaranteed to preserve the internal structure of the files required for correct functioning.
 
 ### Commands ###
-- ```backman init``` - initialize a new backman configuration file (Backfile).
-    - Note: this will **overwrite** an existing Backfile! Use this only when you want to start from scratch
-- ```backman status``` - list all tracked directories and show which files are out of date.
-- ```backman update``` - Run a backup on all active directories, uploading any new or modified subdirectories/files.
-- ```backman add [directories]``` - Add one or more directories to the config file.
-    - ```backman add /data/lab/project1 /data/lab/project2```
-    - OR specify subdirectories: ```backman add /data/lab/project1:subdir2```
-    - OR read directories from a file: ```backman add --file dirs.txt```
-- ```backman exclude``` - Exclude one or more directories from future backups. The directories remain in the config file but are marked as inactive.
-    - ```backman exclude /data/lab/project1 /data/lab/project2```
-- ```backman include``` - Re-include one or more previously excluded directories.
-    - ```backman include /data/lab/project1```
-- ```backman set-auth``` - Set the path to your GCP credentials JSON file.
-    - ```backman set-auth /path/to/credentials.json```
-- ```backman help``` - Print the help menu.
 
-#### Options ####
-A custom config file path can be specified for any command:
-bashbackman --config /custom/path/backman.yaml status
+#### Setup ####
+- `backman init` — Initialize a new Backfile in the current directory.
+    - Note: this will **overwrite** an existing Backfile! Use this only when you want to start from scratch.
+- `backman set auth <auth_file>` — Set the GCP credentials JSON file.
+- `backman set bucket <dir>:<bucket> ...` — Assign a GCS bucket to a directory. Use `*` to assign to all tracked directories.
+- `backman sync <url> <creds>` — Sync directory config from a Google Sheet (overrides Backfile tracking).
+- `backman unsync` — Remove Google Sheet sync and revert to Backfile-only tracking.
 
-GCP Permissions
+#### Tracking ####
+- `backman add <dir>:<subdir> ...` — Add a directory/subdirectory pair to tracking.
+    - `backman add /data/lab/project1:subdir1 /data/lab/project2:subdir2`
+    - OR read from a file: `backman add --file dirs.txt`
+- `backman exclude <dir> ...` — Pause tracking for specified directories (kept in config, marked inactive).
+    - `backman exclude /data/lab/project1 /data/lab/project2`
+- `backman include <dir> ...` — Resume tracking for previously excluded directories.
+    - `backman include /data/lab/project1`
+- `backman config` — Display the current Backfile or Google Sheet configuration.
+
+#### Backup & Restore ####
+- `backman status` — Show outdated/missing files across all tracked directories.
+- `backman update` — Upload missing or changed files to GCS.
+    - `--all` — Re-upload all files regardless of change status.
+    - `--jobs <n>` — Number of parallel upload workers (default: 4).
+- `backman verify` — Compare local CRC32c checksums against GCS to confirm backup integrity.
+- `backman restore <dir> ...` — Download a backup from GCS to local disk.
+    - `backman restore /data/lab/project1:subdir1` — Restore a specific subdirectory.
+    - `backman restore /data/lab/project1:*` — Restore all subdirectories for a directory.
+    - `backman restore *` — Restore all tracked directories.
+
+### Notes ###
+- Requires a GCP service account JSON key; set with: `backman set auth <auth_file>`
+- Directory format for `add`/`restore`: `/absolute/path/to/dir:subdirname`
+- `backfile.yaml` must exist in the working directory for most commands
+
+### GCP Permissions ###
 The GCP service account associated with your credentials file requires at minimum:
-PermissionPurposeStorage Object AdminUpload, download, and delete objects in the bucketStorage Legacy Bucket ReaderCheck if the bucket exists
+
+| Permission | Purpose |
+|---|---|
+| Storage Object Admin | Upload, download, and delete objects in the bucket |
+| Storage Legacy Bucket Reader | Check if the bucket exists |
 
 ### Troubleshooting ###
 
