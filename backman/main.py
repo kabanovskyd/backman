@@ -213,14 +213,9 @@ def upload_parallel(bucket_name, items, directory, rel_directory, max_workers, b
             )
         except subprocess.CalledProcessError as e:
             print(f"Upload failed: {e.stderr}")
-        if result.returncode != 0:
-            print(
-                f"  ERROR {local_path}: {result.stderr.strip() or '(no message)'}",
-                flush=True,
-            )
-        else:
-            bar_handler.advance(task, 1)
-            # print(f"  Uploaded {remote_uri}", flush=True)
+
+        bar_handler.advance(task, 1)
+        # print(f"  Uploaded {remote_uri}", flush=True)
 
     # print(f"  Uploading {len(items)} file(s) via gcloud storage cp...", flush=True)
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -1056,7 +1051,7 @@ def verify(ctx):
     
         resp = prompt_choice('Would you like to run `backman update` automatically to upload the mismatched/missing files? (y/[n]): ', ['y', 'yes', 'n', 'no', ''])
         if resp in ['y', 'yes']:
-            update(ctx, False, False)
+            update(ctx)
 
         print()
         sys.exit(0)
