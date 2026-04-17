@@ -1010,7 +1010,12 @@ def verify(ctx):
 
     # alert the user to any files with mismatches and offer to reupload them
     if len(mismatched) > 0:
-        print(f"\n======= {total_mismatched} ITEMS FAILED VERIFICATION =======\n")
+        if total_mismatched % 10 == 1:
+            placeholder = "ITEM"
+        else:
+            placeholder = "ITEMS"
+
+        print(f"\n======= {total_mismatched} {placeholder} FAILED VERIFICATION =======\n")
         if total_mismatched > 20:
             # print compressed subdirectory overview
             opt = prompt_choice(f"Print all {total_mismatched} items? (y/[n]): ", ['yes', 'y', 'no', 'n', ''])
@@ -1051,7 +1056,7 @@ def verify(ctx):
     
         resp = prompt_choice('Would you like to run `backman update` automatically to upload the mismatched/missing files? (y/[n]): ', ['y', 'yes', 'n', 'no', ''])
         if resp in ['y', 'yes']:
-            update(ctx)
+            update(ctx, False, False)
 
         print()
         sys.exit(0)
