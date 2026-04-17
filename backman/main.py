@@ -580,6 +580,9 @@ def exclude(ctx, dirs):
         for dir in dirs:
             for ind, row in df.iterrows():
                 if row['Directory'] == dir:
+                    print(ind)
+                    print(df)
+                    print(row)
                     ws.update_cell(ind + 2, 1, 'NO')
         sys.exit(0)
 
