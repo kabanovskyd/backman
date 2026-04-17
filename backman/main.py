@@ -577,12 +577,11 @@ def exclude(ctx, dirs):
     if sheet_url.strip() != '':
         print(f'Updating the values in the Google Sheet at {sheet_url}...')
         ws, df, _ = retrieve_google_sheet(sheet_url, sheet_creds)
+        print(df)
+        print(row)
         for dir in dirs:
             for ind, row in df.iterrows():
                 if row['Directory'] == dir:
-                    print(ind)
-                    print(df)
-                    print(row)
                     ws.update_cell(ind + 2, 1, 'NO')
         sys.exit(0)
 
