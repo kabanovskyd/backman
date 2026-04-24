@@ -715,22 +715,29 @@ def include(ctx, dirs):
 
 @cli.command()
 def init():
+    # warn the user that creating a new backfile will overwrite the existing one
     print()
     if pathlib.Path('./backfile.yaml').is_file():
-        print('WARNING: you are about to overwrite the existing Backfile - this will delete ALL data about currently tracked directories!')
-        opt = prompt_choice('Are you sure you would like to continue? (y/n): ', ['yes', 'y', 'no', 'n'])
-        if opt not in ['yes', 'y']:
+        print('\nWARNING: you are about to overwrite the existing Backfile - this will delete ALL data about currently tracked directories!')
+        opt = prompt_choice('Are you sure you want to continue? (y/[n]): ', ['yes', 'y', 'no', 'n', ''])
+        if opt in ['no', 'n', '']:
             sys.exit(0)
 
+    # obtain a path to a valid authentication key
     print('Creating Backfile...')
+    auth_path = input("Please provide a path to a valid Google authentication key file: ")
+    while not pathlib.Path(auth_path).is_file:
+        auth_path = input(f"{auth_path} is not a file.\nPlease provide a path to a valid Google authentication key file: ")
+
+    # set the fields in the config data structure and write it to the new backfile
     config = {}
-    config['authentication_file'] = ''
+    config['authentication_file'] = str(auth_path)
     config['google_sheet'] = {'sheet_url': '', 'sheet_credentials': ''}
     config['directories'] = {}
     with open("backfile.yaml", "w") as file:
         yaml.dump(config, file, default_flow_style=False)
 
-    print('Backfile created! Please run `backman set-auth [authentication_file]` to provide backman with a valid JSON authentication key file for GCP access.')
+    print("Backfile created!\n")
 
 
 @cli.command()
