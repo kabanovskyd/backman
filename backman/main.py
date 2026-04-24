@@ -572,6 +572,8 @@ def exclude(ctx, dirs):
     config = ctx.obj["config"]
     sheet_url = config['google_sheet']['sheet_url']
     sheet_creds = config['google_sheet']['sheet_credentials']
+    excluded = []
+    inactive = []
 
     # strip trailing slashes
     dirs = [dir[:-1] if dir.endswith('/') and not len(dir) == 1 else dir for dir in dirs]
@@ -594,30 +596,45 @@ def exclude(ctx, dirs):
             for ind, row in df.iterrows():
                 row_dir = row['Directory'][:-1] if row['Directory'].endswith('/') else row['Directory']
                 if row_dir == dir:
-                    ws.update_cell(ind + 2, 1, 'NO')
+                    if row['Tracked'] == 'YES':
+                        ws.update_cell(ind + 2, 1, 'NO')
+                        excluded.append(dir)
+                    else:
+                        inactive.append(dir)
         sys.exit(0)
 
-    # make sure all specified directories are present in the backfile
-    if any(directory not in config['directories'] for directory in dirs):
-        print('\nThe following directories are not present in the backfile:\n')
-        for directory in dirs:
-            if directory not in config['directories']:
-                print(f'- {directory}')
-        print('\nPlease make sure all listed directories are present in the backfile and re-run the command.\n')
-        sys.exit(1)
+    else:
+        # make sure all specified directories are present in the backfile
+        if any(directory not in config['directories'] for directory in dirs):
+            print('\nThe following directories are not present in the backfile:\n')
+            for directory in dirs:
+                if directory not in config['directories']:
+                    print(f'- {directory}')
+            print('\nPlease make sure all listed directories are present in the backfile and re-run the command.\n')
+            sys.exit(1)
 
-    # iterate over all specified directories and set their tracking status to `False`
-    for directory in dirs:
-        config['directories'][directory]['active'] = False
-    
-    # write new config values to backfile
-    with open("backfile.yaml", "w") as f:
-        yaml.dump(config, f, default_flow_style=False)
-    
+        # iterate over all specified directories and set their tracking status to `False`
+        for directory in dirs:
+            if config['directories'][directory]['active'] == True:
+                config['directories'][directory]['active'] = False
+                excluded.append(directory)
+            else:
+                inactive.append(directory)
+        
+        # write new config values to backfile
+        with open("backfile.yaml", "w") as f:
+            yaml.dump(config, f, default_flow_style=False)
+        
     # print status update info
-    print('\nThe following directories have been excluded from tracking:\n')
-    for dir in dirs:
-        print(f'- {dir}')
+    if len(excluded) > 0:
+        print('\nThe following directories have been excluded from tracking:\n')
+        for dir in excluded:
+            print(f'- {dir}')
+
+    if len(inactive) > 0:
+        print('\nThe following directories are already not being tracked:\n')
+        for dir in inactive:
+            print(f'- {dir}')
     print()
 
 
