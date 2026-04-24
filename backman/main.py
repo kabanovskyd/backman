@@ -641,39 +641,75 @@ def exclude(ctx, dirs):
 @click.pass_context
 @click.argument("dirs", nargs=-1, required=True)
 def include(ctx, dirs):
+    """
+    Include specified directories from the config file / Google Sheet in future backups.
+    """
+
+    # load the configuration file contents
     config = ctx.obj["config"]
     sheet_url = config['google_sheet']['sheet_url']
     sheet_creds = config['google_sheet']['sheet_credentials']
+    included = []
+    active = []
 
+    # strip trailing slashes
+    dirs = [dir[:-1] if dir.endswith('/') and not len(dir) == 1 else dir for dir in dirs]
+
+    # update the Google Sheet fields if synced with a sheet
     if sheet_url != '':
-        print(f'Updating the values in the Google Sheet at {sheet_url}...')
         ws, df, _ = retrieve_google_sheet(sheet_url, sheet_creds)
+
+        # verify that all specified directories are present in the sheet
+        if any(directory not in df['Directory'].values for directory in dirs):
+            print('\nThe following directories are not present in the Google Sheet:\n')
+            for directory in dirs:
+                if directory not in config['directories']:
+                    print(f'- {directory}')
+            print('\nPlease make sure all listed directories are present in the Google Sheet and re-run the command.\n')
+            sys.exit(1)
+    
+        # iterate through specified directories and change their tracking status to `YES`
         for dir in dirs:
-            if dir.endswith('/') and len(dir) != 1:
-                dir = dir[:-1]
             for ind, row in df.iterrows():
                 row_dir = row['Directory'][:-1] if row['Directory'].endswith('/') else row['Directory']
                 if row_dir == dir:
-                    ws.update_cell(ind + 2, 1, 'YES')
-        sys.exit(0)
+                    if row['Tracked'] == 'NO':
+                        ws.update_cell(ind + 2, 1, 'YES')
+                        included.append(dir)
+                    else:
+                        active.append(dir)
+    else:
+        # make sure all specified directories are present in the backfile
+        if any(directory not in config['directories'] for directory in dirs):
+            print('\nThe following directories are not present in the backfile:\n')
+            for directory in dirs:
+                if directory not in config['directories']:
+                    print(f'- {directory}')
+            print('\nPlease make sure all listed directories are present in the backfile and re-run the command.\n')
+            sys.exit(1)
 
-    if any(directory not in config['directories'] for directory in dirs):
-        print('\nThe following directories are not present in the backfile:\n')
+        # iterate over all specified directories and set their tracking status to `True`
         for directory in dirs:
-            if directory not in config['directories']:
-                print(f'- {directory}')
-        print('\nPlease make sure all listed directories are present in the backfile and re-run the command.\n')
-        sys.exit(1)
+            if config['directories'][directory]['active'] == False:
+                config['directories'][directory]['active'] = True
+                included.append(directory)
+            else:
+                active.append(directory)
+        
+        # write updated field values to backfile
+        with open("backfile.yaml", "w") as f:
+            yaml.dump(config, f, default_flow_style=False)
 
-    for directory in dirs:
-        config['directories'][directory]['active'] = True
-    
-    with open("backfile.yaml", "w") as f:
-        yaml.dump(config, f, default_flow_style=False)
-    
-    print('\nThe following directories have been included in tracking:\n')
-    for dir in dirs:
-        print(f'- {dir}')
+    # print status update info
+    if len(included) > 0:
+        print('\nThe following directories have been included in tracking:\n')
+        for dir in included:
+            print(f'- {dir}')
+
+    if len(active) > 0:
+        print('\nThe following directories are already being tracked:\n')
+        for dir in active:
+            print(f'- {dir}')
     print()
 
 
