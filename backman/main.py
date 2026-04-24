@@ -574,7 +574,7 @@ def exclude(ctx, dirs):
     sheet_creds = config['google_sheet']['sheet_credentials']
 
     # strip trailing slashes
-    dirs = [dir[:-1] for dir in dirs if dir.endswith('/') and not len(dir) == 1]
+    dirs = [dir[:-1] if dir.endswith('/') and not len(dir) == 1 else dir for dir in dirs]
 
     # update the Google Sheet fields if synced with a sheet
     if sheet_url.strip() != '':
