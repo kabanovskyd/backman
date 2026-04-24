@@ -1001,12 +1001,14 @@ def sync(ctx, url, creds):
 @cli.command()
 @click.pass_context
 def unsync(ctx):
+    # update the config object and remove the google sheet URL
     config = ctx.obj["config"]
     url = config['google_sheet']['sheet_url']
     config['google_sheet']['sheet_url'] = ''
     print(f'Successfully unsynced from the sheet at {url}.')
     print('NOTE: backman will now ONLY track the directories specified in the Backfile!\n')
 
+    # write the updated config object to backfile
     with open("backfile.yaml", "w") as f:
         yaml.dump(config, f, default_flow_style=False)
 
