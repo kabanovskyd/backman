@@ -1005,6 +1005,13 @@ def unsync(ctx):
     config = ctx.obj["config"]
     url = config['google_sheet']['sheet_url']
     config['google_sheet']['sheet_url'] = ''
+
+    # check that the backfile is actually synced to a Google Sheet
+    if url.strip() == '':
+        print("Google Sheet is not synced - nothing to unsync from.\n")
+        sys.exit(1)
+
+    # print update info
     print(f'Successfully unsynced from the sheet at {url}.')
     print('NOTE: backman will now ONLY track the directories specified in the Backfile!\n')
 
