@@ -573,6 +573,9 @@ def exclude(ctx, dirs):
     sheet_url = config['google_sheet']['sheet_url']
     sheet_creds = config['google_sheet']['sheet_credentials']
 
+    # strip trailing slashes
+    dirs = [dir[:-1] for dir in dirs if dir.endswith('/') and not len(dir) == 1]
+
     # update the Google Sheet fields if synced with a sheet
     if sheet_url.strip() != '':
         ws, df, _ = retrieve_google_sheet(sheet_url, sheet_creds)
@@ -588,8 +591,6 @@ def exclude(ctx, dirs):
 
         # iterate through the specified directories and change their tracking status to `NO`
         for dir in dirs:
-            if dir.endswith('/') and len(dir) != 1:
-                dir = dir[:-1]
             for ind, row in df.iterrows():
                 row_dir = row['Directory'][:-1] if row['Directory'].endswith('/') else row['Directory']
                 if row_dir == dir:
