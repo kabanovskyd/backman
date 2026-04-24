@@ -718,7 +718,7 @@ def init():
     # warn the user that creating a new backfile will overwrite the existing one
     print()
     if pathlib.Path('./backfile.yaml').is_file():
-        print('\nWARNING: you are about to overwrite the existing Backfile - this will delete ALL data about currently tracked directories!')
+        print('WARNING: you are about to overwrite the existing Backfile - this will delete ALL data about currently tracked directories!')
         opt = prompt_choice('Are you sure you want to continue? (y/[n]): ', ['yes', 'y', 'no', 'n', ''])
         if opt in ['no', 'n', '']:
             sys.exit(0)
@@ -1005,7 +1005,7 @@ def unsync(ctx):
     url = config['google_sheet']['sheet_url']
     config['google_sheet']['sheet_url'] = ''
     print(f'Successfully unsynced from the sheet at {url}.')
-    print('NOTE: backman will now ONLY track the directories specified in the Backfile!')
+    print('NOTE: backman will now ONLY track the directories specified in the Backfile!\n')
 
     with open("backfile.yaml", "w") as f:
         yaml.dump(config, f, default_flow_style=False)
