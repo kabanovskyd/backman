@@ -564,14 +564,29 @@ def update(ctx, jobs, upload_all):
 @click.pass_context
 @click.argument("dirs", nargs=-1, required=True)
 def exclude(ctx, dirs):
-    """Exclude specified directories from future backups, but keep them in the config file."""
+    """
+    Exclude specified directories from future backups, but keep them in the config file / Google Sheet.
+    """
+
+    # load the configuration file contents
     config = ctx.obj["config"]
     sheet_url = config['google_sheet']['sheet_url']
     sheet_creds = config['google_sheet']['sheet_credentials']
 
+    # update the Google Sheet fields if synced with a sheet
     if sheet_url.strip() != '':
-        print(f'Updating the values in the Google Sheet at {sheet_url}...')
         ws, df, _ = retrieve_google_sheet(sheet_url, sheet_creds)
+
+        # verify that all specified directories are present in the sheet
+        if any(directory not in df['Directory'].values for directory in dirs):
+            print('\nThe following directories are not present in the Google Sheet:\n')
+            for directory in dirs:
+                if directory not in config['directories']:
+                    print(f'- {directory}')
+            print('\nPlease make sure all listed directories are present in the Google Sheet and re-run the command.\n')
+            sys.exit(1)
+
+        # iterate through the specified directories and change their tracking status to `NO`
         for dir in dirs:
             if dir.endswith('/') and len(dir) != 1:
                 dir = dir[:-1]
@@ -581,6 +596,7 @@ def exclude(ctx, dirs):
                     ws.update_cell(ind + 2, 1, 'NO')
         sys.exit(0)
 
+    # make sure all specified directories are present in the backfile
     if any(directory not in config['directories'] for directory in dirs):
         print('\nThe following directories are not present in the backfile:\n')
         for directory in dirs:
@@ -589,12 +605,15 @@ def exclude(ctx, dirs):
         print('\nPlease make sure all listed directories are present in the backfile and re-run the command.\n')
         sys.exit(1)
 
+    # iterate over all specified directories and set their tracking status to `False`
     for directory in dirs:
         config['directories'][directory]['active'] = False
     
+    # write new config values to backfile
     with open("backfile.yaml", "w") as f:
         yaml.dump(config, f, default_flow_style=False)
     
+    # print status update info
     print('\nThe following directories have been excluded from tracking:\n')
     for dir in dirs:
         print(f'- {dir}')
