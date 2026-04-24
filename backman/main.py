@@ -601,7 +601,6 @@ def exclude(ctx, dirs):
                         excluded.append(dir)
                     else:
                         inactive.append(dir)
-        sys.exit(0)
 
     else:
         # make sure all specified directories are present in the backfile
