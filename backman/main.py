@@ -991,8 +991,6 @@ def sync(ctx, url, creds):
     print(f'Successfully synced with the sheet at {url}!')
     config['google_sheet']['sheet_url'] = url
     config['google_sheet']['sheet_credentials'] = str(creds)
-    print(config['google_sheet']['sheet_credentials'])
-    print(type(config['google_sheet']['sheet_credentials']))
 
     with open("backfile.yaml", "w") as f:
         yaml.safe_dump(config, f, default_flow_style=False)
@@ -1280,7 +1278,7 @@ def history(ctx):
 @click.argument("cron", nargs=-1, required=True)
 def schedule(cron):
     """
-    Parses and validates a CRON_STRING.
+    Parses and validates a cron string.
     
     Example: cron-tool "*/15 * * * *"
     Or:      cron-tool * * * * *
