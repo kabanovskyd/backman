@@ -8,7 +8,7 @@ else
 fi
 
 uv venv
-uv pip install -e .  --concurrent-downloads 1
+uv tool install -e .
 backman_path=$(find . -name "backman" -type f)
 export PATH=$PWD/.venv/bin:$PATH
 echo 'export PATH=$PWD/.venv/bin:$PATH' >> ~/.bashrc
