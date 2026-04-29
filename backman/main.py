@@ -1284,9 +1284,6 @@ def schedule(cron):
     Or:      cron-tool * * * * *
     """
 
-    if os.getuid() != 0:
-        print("`backman schedule` requires root privileges to add shared cron jobs. Please re-run the command with sudo.")
-
     # Join parts into a single string (handles space-separated input automatically)
     cron_string = " ".join(cron)
 
@@ -1317,9 +1314,6 @@ def schedule(cron):
 
 @cli.command()
 def unschedule():
-    if os.getuid() != 0:
-        print("`backman unschedule` requires root privileges to remove shared cron jobs. Please re-run the command with sudo.")
-
     cron = CronTab(user=True)
     # Create a new job (avoid duplicates by checking for a unique comment)
     job_comment = "regular_backman_job"
@@ -1337,10 +1331,7 @@ def unschedule():
 
 
 @cli.command()
-def next():
-    if os.getuid() != 0:
-        print("`backman next` requires root privileges to view shared cron jobs. Please re-run the command with sudo.")
-
+def lookahead():
     cron = CronTab(user=True)
     # Create a new job (avoid duplicates by checking for a unique comment)
     job_comment = "regular_backman_job"
