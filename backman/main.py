@@ -598,9 +598,9 @@ def exclude(ctx, dirs):
                 if row_dir == dir or dir == '*':
                     if row['Tracked'] == 'YES':
                         ws.update_cell(ind + 2, 1, 'NO')
-                        excluded.append(dir)
+                        excluded.append(row_dir)
                     else:
-                        inactive.append(dir)
+                        inactive.append(row_dir)
 
     else:
         # globbing collects all directories
@@ -679,9 +679,9 @@ def include(ctx, dirs):
                 if row_dir == dir or dir == 'all':
                     if row['Tracked'] == 'NO':
                         ws.update_cell(ind + 2, 1, 'YES')
-                        included.append(dir)
+                        included.append(row_dir)
                     else:
-                        active.append(dir)
+                        active.append(row_dir)
     else:
         # globbing collects all directories
         if dirs == ['all']:
