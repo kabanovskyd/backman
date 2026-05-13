@@ -582,6 +582,13 @@ def exclude(ctx, dirs):
     if sheet_url.strip() != '':
         ws, df, _ = retrieve_google_sheet(sheet_url, sheet_creds)
 
+        # globbing collects all subdirectories
+        if dirs == ['*']:
+            dirs = []
+            for directory in config['directories']:
+                if not config['directories'][directory]['active']:
+                    dirs.append(directory)
+
         # verify that all specified directories are present in the sheet
         if any(directory not in df['Directory'].values for directory in dirs):
             print('\nThe following directories are not present in the Google Sheet:\n')
@@ -595,7 +602,7 @@ def exclude(ctx, dirs):
         for dir in dirs:
             for ind, row in df.iterrows():
                 row_dir = row['Directory'][:-1] if row['Directory'].endswith('/') else row['Directory']
-                if row_dir == dir:
+                if row_dir == dir or dir == '*':
                     if row['Tracked'] == 'YES':
                         ws.update_cell(ind + 2, 1, 'NO')
                         excluded.append(dir)
@@ -603,6 +610,10 @@ def exclude(ctx, dirs):
                         inactive.append(dir)
 
     else:
+        # globbing collects all directories
+        if dirs == ['*']:
+            dirs = config['directories']
+
         # make sure all specified directories are present in the backfile
         if any(directory not in config['directories'] for directory in dirs):
             print('\nThe following directories are not present in the backfile:\n')
@@ -672,13 +683,17 @@ def include(ctx, dirs):
         for dir in dirs:
             for ind, row in df.iterrows():
                 row_dir = row['Directory'][:-1] if row['Directory'].endswith('/') else row['Directory']
-                if row_dir == dir:
+                if row_dir == dir or dir == '*':
                     if row['Tracked'] == 'NO':
                         ws.update_cell(ind + 2, 1, 'YES')
                         included.append(dir)
                     else:
                         active.append(dir)
     else:
+        # globbing collects all directories
+        if dirs == ['*']:
+            dirs = config['directories']
+
         # make sure all specified directories are present in the backfile
         if any(directory not in config['directories'] for directory in dirs):
             print('\nThe following directories are not present in the backfile:\n')
