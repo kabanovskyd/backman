@@ -772,12 +772,43 @@ def auth(ctx, path):
 @click.argument('names', nargs=-1, required=True)
 def bucket(ctx, names):
     config = ctx.obj['config']
+    sheet_url = config['google_sheet']['sheet_url']
+    sheet_creds = config['google_sheet']['sheet_credentials']
+
+    if sheet_url != '':
+        ws, df, _ = retrieve_google_sheet(sheet_url, sheet_creds)
+
+        # verify that all specified directories are present in the sheet
+        if any(name.split(':')[0] not in df['Directory'].values for name in names) and names[0].split(':')[0] != '*':
+            print('\nThe following directories are not present in the Google Sheet:\n')
+            for name in names:
+                if name.split(':')[0] not in df['Directory'].values:
+                    print(f' - {name.split(':')[0]}')
+            print('\nPlease make sure all listed directories are present in the Google Sheet and re-run the command.\n')
+            sys.exit(1)
+
+        for address in names:
+            if ':' not in address or len(address.split(':')) != 2:
+                print("Usage: backman set bucket <directory>:<bucket>")
+                sys.exit(1)
+            directory, bucket_addr = address.split(":")
+
+            for ind, row in df.iterrows():
+                row_dir = row['Directory'][:-1] if row['Directory'].endswith('/') else row['Directory']
+                if row_dir == directory or directory == '*':
+                    # CHECK WHETHER bucket_addr EXISTS AS A DROP-DOWN OPTION
+                    ws.update_cell(ind + 2, 7, bucket_addr)
+    
+            if directory == '*':
+                directory = 'all directories'
+            print(f'Set the destination bucket for {directory} to {bucket_addr}')
+
     if len(config['directories']) == 0:
         print("Cannot set destination bucket as no directories are specified.")
         print("Please add directories for tracking by running `backman add <directory>:<subdirectory>`")
         sys.exit(1)
     for address in names:
-        if ':' not in address or len(address.split(':')) > 2:
+        if ':' not in address or len(address.split(':')) != 2:
             print("Usage: backman set bucket <directory>:<bucket>")
             sys.exit(1)
         directory, bucket_addr = address.split(":")
@@ -789,6 +820,9 @@ def bucket(ctx, names):
                 print(f"Directory {directory} not found in Backfile! Please add it with `backman add {directory}:<subdirectory>`")
                 sys.exit(1)
             config['directories'][directory]['bucket'] = bucket_addr
+
+        if directory == '*':
+            directory = 'all directories'
         print(f'Set the destination bucket for {directory} to {bucket_addr}')
 
     # dump the updated config dictionary contents into the backfile
