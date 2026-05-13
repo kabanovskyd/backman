@@ -741,6 +741,7 @@ def init():
 
 
 @cli.group()
+@click.pass_context
 def set(ctx):
     """Set configuration values"""
     ctx.ensure_object(dict)
