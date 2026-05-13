@@ -582,15 +582,8 @@ def exclude(ctx, dirs):
     if sheet_url.strip() != '':
         ws, df, _ = retrieve_google_sheet(sheet_url, sheet_creds)
 
-        # globbing collects all subdirectories
-        if dirs == ['all']:
-            dirs = []
-            for directory in config['directories']:
-                if not config['directories'][directory]['active']:
-                    dirs.append(directory)
-
         # verify that all specified directories are present in the sheet
-        if any(directory not in df['Directory'].values for directory in dirs):
+        if any(directory not in df['Directory'].values for directory in dirs) and dirs != ['all']:
             print('\nThe following directories are not present in the Google Sheet:\n')
             for directory in dirs:
                 if directory not in config['directories']:
@@ -671,7 +664,7 @@ def include(ctx, dirs):
         ws, df, _ = retrieve_google_sheet(sheet_url, sheet_creds)
 
         # verify that all specified directories are present in the sheet
-        if any(directory not in df['Directory'].values for directory in dirs):
+        if any(directory not in df['Directory'].values for directory in dirs) and dirs != ['all']:
             print('\nThe following directories are not present in the Google Sheet:\n')
             for directory in dirs:
                 if directory not in config['directories']:
