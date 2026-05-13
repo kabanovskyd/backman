@@ -717,7 +717,7 @@ def include(ctx, dirs):
 def init():
     # warn the user that creating a new backfile will overwrite the existing one
     print()
-    if pathlib.Path('./backfile.yaml').is_file():
+    if pathlib.Path('./.backfile.yaml').is_file():
         print('WARNING: you are about to overwrite the existing Backfile - this will delete ALL data about currently tracked directories!')
         opt = prompt_choice('Are you sure you want to continue? (y/[n]): ', ['yes', 'y', 'no', 'n', ''])
         if opt in ['no', 'n', '']:
@@ -740,36 +740,42 @@ def init():
     print("Backfile created!\n")
 
 
-@cli.command()
+@cli.group()
+def set(ctx):
+    """Set configuration values"""
+    ctx.ensure_object(dict)
+
+@set.command()
 @click.pass_context
-@click.argument("auth", nargs=1, required=False)
-@click.argument("bucket", nargs=-1, required=False)
-def set(ctx, auth, bucket):
+@click.argument('path', nargs=1, required=True)
+def auth(ctx, path):
     config = ctx.obj['config']
-    if auth:
-        if not pathlib.Path(auth).is_file():
-            print(f'{auth} not found.')
+    if not pathlib.Path(path).is_file():
+        print(f'{path} not found.')
+        sys.exit(1)
+        print(f'\nSet {path} as the authentication key file.\n')
+    config['authentication_file'] = path
+    with open("backfile.yaml", "w") as file:
+        yaml.dump(config, file, default_flow_style=False)
+
+@set.command()
+@click.pass_context
+@click.argument('names', nargs=-1, required=True)
+def bucket(ctx, names):
+    config = ctx.obj['config']
+    for address in names:
+        if ':' not in address or len(address.split(':')) > 2:
+            print("Usage: backman set bucket <directory>:<bucket>")
             sys.exit(1)
-
-        print(f'\nSet {auth} as the authentication key file.\n')
-        config['authentication_file'] = auth
-        with open("backfile.yaml", "w") as file:
-            yaml.dump(config, file, default_flow_style=False)
-
-    if bucket:
-        for address in bucket:
-            if ':' not in address or len(address.split(':')) > 2:
-                print("Usage: backman set bucket <directory>:<bucket>")
+        directory, bucket_addr = address.split(":")
+        if directory == "*":
+            for dir in config['directories']:
+                config['directories'][dir]['bucket'] = bucket_addr
+        else:
+            if directory not in config['directories']:
+                print(f"Directory {directory} not found in Backfile! Please add it with `backman add {directory}:<subdirectory>`")
                 sys.exit(1)
-            directory, bucket_addr = address.split(":")
-            if directory == "*":
-                for dir in config['directories']:
-                    config['directories'][dir]['bucket'] = bucket_addr
-            else:
-                if directory not in config['directories']:
-                    print(f"Directory {directory} not found in Backfile! Please add it with `backman add {directory}:<subdirectory>`")
-                    sys.exit(1)
-                config['directories'][directory]['bucket'] = bucket_addr
+            config['directories'][directory]['bucket'] = bucket_addr
 
 
 @cli.command()
@@ -1331,7 +1337,7 @@ def unschedule():
 
 
 @cli.command()
-def lookahead():
+def jobs():
     cron = CronTab(user=True)
     # Create a new job (avoid duplicates by checking for a unique comment)
     job_comment = "regular_backman_job"
