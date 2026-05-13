@@ -595,7 +595,7 @@ def exclude(ctx, dirs):
         for dir in dirs:
             for ind, row in df.iterrows():
                 row_dir = row['Directory'][:-1] if row['Directory'].endswith('/') else row['Directory']
-                if row_dir == dir or dir == '*':
+                if row_dir == dir or dir == 'all':
                     if row['Tracked'] == 'YES':
                         ws.update_cell(ind + 2, 1, 'NO')
                         excluded.append(row_dir)
