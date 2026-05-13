@@ -583,7 +583,7 @@ def exclude(ctx, dirs):
         ws, df, _ = retrieve_google_sheet(sheet_url, sheet_creds)
 
         # globbing collects all subdirectories
-        if dirs == ['*']:
+        if dirs == ['all']:
             dirs = []
             for directory in config['directories']:
                 if not config['directories'][directory]['active']:
@@ -611,7 +611,7 @@ def exclude(ctx, dirs):
 
     else:
         # globbing collects all directories
-        if dirs == ['*']:
+        if dirs == ['all']:
             dirs = config['directories']
 
         # make sure all specified directories are present in the backfile
@@ -683,7 +683,7 @@ def include(ctx, dirs):
         for dir in dirs:
             for ind, row in df.iterrows():
                 row_dir = row['Directory'][:-1] if row['Directory'].endswith('/') else row['Directory']
-                if row_dir == dir or dir == '*':
+                if row_dir == dir or dir == 'all':
                     if row['Tracked'] == 'NO':
                         ws.update_cell(ind + 2, 1, 'YES')
                         included.append(dir)
@@ -691,7 +691,7 @@ def include(ctx, dirs):
                         active.append(dir)
     else:
         # globbing collects all directories
-        if dirs == ['*']:
+        if dirs == ['all']:
             dirs = config['directories']
 
         # make sure all specified directories are present in the backfile
