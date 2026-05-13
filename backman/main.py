@@ -587,7 +587,7 @@ def exclude(ctx, dirs):
             print('\nThe following directories are not present in the Google Sheet:\n')
             for directory in dirs:
                 if directory not in config['directories']:
-                    print(f'- {directory}')
+                    print(f' - {directory}')
             print('\nPlease make sure all listed directories are present in the Google Sheet and re-run the command.\n')
             sys.exit(1)
 
@@ -612,7 +612,7 @@ def exclude(ctx, dirs):
             print('\nThe following directories are not present in the backfile:\n')
             for directory in dirs:
                 if directory not in config['directories']:
-                    print(f'- {directory}')
+                    print(f' - {directory}')
             print('\nPlease make sure all listed directories are present in the backfile and re-run the command.\n')
             sys.exit(1)
 
@@ -632,12 +632,12 @@ def exclude(ctx, dirs):
     if len(excluded) > 0:
         print('\nThe following directories have been excluded from tracking:\n')
         for dir in excluded:
-            print(f'- {dir}')
+            print(f' - {dir}')
 
     if len(inactive) > 0:
         print('\nThe following directories are already not being tracked:\n')
         for dir in inactive:
-            print(f'- {dir}')
+            print(f' - {dir}')
     print()
 
 
@@ -668,7 +668,7 @@ def include(ctx, dirs):
             print('\nThe following directories are not present in the Google Sheet:\n')
             for directory in dirs:
                 if directory not in config['directories']:
-                    print(f'- {directory}')
+                    print(f' - {directory}')
             print('\nPlease make sure all listed directories are present in the Google Sheet and re-run the command.\n')
             sys.exit(1)
     
@@ -692,7 +692,7 @@ def include(ctx, dirs):
             print('\nThe following directories are not present in the backfile:\n')
             for directory in dirs:
                 if directory not in config['directories']:
-                    print(f'- {directory}')
+                    print(f' - {directory}')
             print('\nPlease make sure all listed directories are present in the backfile and re-run the command.\n')
             sys.exit(1)
 
@@ -712,12 +712,12 @@ def include(ctx, dirs):
     if len(included) > 0:
         print('\nThe following directories have been included in tracking:\n')
         for dir in included:
-            print(f'- {dir}')
+            print(f' - {dir}')
 
     if len(active) > 0:
         print('\nThe following directories are already being tracked:\n')
         for dir in active:
-            print(f'- {dir}')
+            print(f' - {dir}')
     print()
 
 
