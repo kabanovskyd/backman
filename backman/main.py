@@ -764,6 +764,10 @@ def auth(ctx, path):
 @click.argument('names', nargs=-1, required=True)
 def bucket(ctx, names):
     config = ctx.obj['config']
+    if len(config['directories']) == 0:
+        print("Cannot set destination bucket as no directories are specified.")
+        print("Please add directories for tracking by running `backman add <directory>:<subdirectory>`")
+        sys.exit(1)
     for address in names:
         if ':' not in address or len(address.split(':')) > 2:
             print("Usage: backman set bucket <directory>:<bucket>")
@@ -777,6 +781,11 @@ def bucket(ctx, names):
                 print(f"Directory {directory} not found in Backfile! Please add it with `backman add {directory}:<subdirectory>`")
                 sys.exit(1)
             config['directories'][directory]['bucket'] = bucket_addr
+        print(f'Set the destination bucket for {directory} to {bucket_addr}')
+
+    # dump the updated config dictionary contents into the backfile
+    with open("backfile.yaml", "w") as file:
+        yaml.dump(config, file, default_flow_style=False)
 
 
 @cli.command()
