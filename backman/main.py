@@ -1132,7 +1132,7 @@ def restore(ctx, dirs):
 
         for blob in blobs:
             out = (blob.name).split(os.path.basename(dest))[-1]
-            out = pathlib.Path(dest + out)
+            out = pathlib.Path(str(dest) + out)
             out.parent.mkdir(parents=True, exist_ok=True)  # preserve subdirs
             blob.download_to_filename(out)
             progress.advance(task)
