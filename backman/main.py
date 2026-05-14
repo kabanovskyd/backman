@@ -836,9 +836,8 @@ def bucket(ctx, names):
     
             if directory == '*':
                 print(f'Set the destination bucket for all directories to {bucket_addr}')
-                sys.exit(0)
-
-            print(f'Set the destination bucket for {directory} to {bucket_addr}')
+            else:
+                print(f'Set the destination bucket for {directory} to {bucket_addr}')
 
     if len(config['directories']) == 0:
         print("Cannot set destination bucket as no directories are specified.")
@@ -860,9 +859,8 @@ def bucket(ctx, names):
 
         if directory == '*':
             print(f'Set the destination bucket for all directories to {bucket_addr}')
-            sys.exit(0)
-
-        print(f'Set the destination bucket for {directory} to {bucket_addr}')
+        else:
+            print(f'Set the destination bucket for {directory} to {bucket_addr}')
 
     # dump the updated config dictionary contents into the backfile
     with open("backfile.yaml", "w") as file:
