@@ -1203,15 +1203,15 @@ def restore(ctx, dirs):
         current_dirs = [p for p in pathlib.Path.cwd().iterdir() if p.is_dir()]
         rel_directory = os.path.basename(dir)
         target_bucket = target_directories[dir]['bucket']
-        if dir in current_dirs:
-            dirname = dir + '_backup'
+        if rel_directory in current_dirs:
+            dirname = rel_directory + '_backup'
             counter = 0
             while dirname in current_dirs:
                 dirname += str(counter)
         else:
-            dirname = dir
+            dirname = rel_directory
 
-        pathlib.Path(dirname).mkdir()
+        pathlib.Path(dirname).mkdir(exist_ok=True)
 
         for subdir in dirs_to_restore[dir]:
             subdir_dest = pathlib.Path(dirname) / subdir
