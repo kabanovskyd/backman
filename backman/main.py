@@ -1131,7 +1131,8 @@ def restore(ctx, dirs):
         dest.mkdir(parents=True, exist_ok=True)
 
         for blob in blobs:
-            out = dest / blob.name
+            out = (blob.name).split(os.path.basename(dest))[-1]
+            out = pathlib.Path(dest + out)
             out.parent.mkdir(parents=True, exist_ok=True)  # preserve subdirs
             blob.download_to_filename(out)
             progress.advance(task)
@@ -1200,7 +1201,7 @@ def restore(ctx, dirs):
         sys.exit(0)
 
     for dir in dirs_to_restore:
-        current_dirs = [p for p in pathlib.Path.cwd().iterdir() if p.is_dir()]
+        current_dirs = [os.path.basename(p) for p in pathlib.Path.cwd().iterdir() if p.is_dir()]
         rel_directory = os.path.basename(dir)
         target_bucket = target_directories[dir]['bucket']
         if rel_directory in current_dirs:
