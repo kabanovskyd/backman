@@ -230,7 +230,8 @@ def find_files_to_upload(
     local_files: list[dict],
     remote_manifest: dict,
     directory: str,
-    upload_all: bool = False
+    upload_all: bool = False,
+    strict: bool = False
 ) -> list[dict]:
 
     """Return only local files that are missing or changed in GCS."""
@@ -248,8 +249,9 @@ def find_files_to_upload(
             to_upload.append({**file, "reason": "modified"})
         elif upload_all:
             to_upload.append({**file, "reason": "all_flag"})
-        #elif file["crc32c"] != remote_manifest[remote_key]["crc32c"]:
-        #    to_upload.append({**file, "reason": "checksum mismatch"})
+        elif strict:
+            if file["crc32c"] != remote_manifest[remote_key]["crc32c"]:
+                to_upload.append({**file, "reason": "checksum mismatch"})
 
     return to_upload
 
@@ -278,7 +280,7 @@ def retrieve_gcp_files(
     return manifest
 
 
-def collect_files(root: str, subdir: str,) -> list[dict]:
+def collect_files(root: str, subdir: str, checksum: bool) -> list[dict]:
     results = []
     skipped = []
     def _walk(path):
@@ -296,12 +298,19 @@ def collect_files(root: str, subdir: str,) -> list[dict]:
                     ext = os.path.splitext(entry.name)[1].lower()
                     if ext not in EXCLUDE_EXTENSIONS:
                         stat = entry.stat()
-                        results.append({
-                            "path": entry.path,
-                            "size": stat.st_size,
-                            "mtime": stat.st_mtime
-                            #"crc32c": crc32c(entry.path)
-                        })
+                        if checksum:
+                            results.append({
+                                "path": entry.path,
+                                "size": stat.st_size,
+                                "mtime": stat.st_mtime,
+                                "crc32c": file_crc32c_b64(entry.path)
+                            })
+                        else:
+                            results.append({
+                                "path": entry.path,
+                                "size": stat.st_size,
+                                "mtime": stat.st_mtime
+                            })
             except PermissionError:
                 print(f"Warning: permission denied, skipping {entry.path}")
                 skipped.append(path / entry)
@@ -393,8 +402,15 @@ def cli(ctx):
 
 @cli.command()
 @click.pass_context
-def status(ctx):
-    """Display the status of all tracked directories, listing subdirectories containing outdated/missing files"""
+@click.option(
+    '--strict',
+    is_flag=True,
+    help='Use checksum comparison to ensure that backed up files are identical to local ones'
+)
+def status(ctx, strict):
+    """
+    Display the status of all tracked directories, listing subdirectories containing outdated/missing files
+    """
 
     # initialize function variables
     upload_dict = {}
@@ -425,11 +441,11 @@ def status(ctx):
                 #target_subdirs = [item for item in pathlib.Path(directory).glob('*') if item.is_dir()]
                 #continue
             with console.status(f"[bold cyan][{subdir}][/bold cyan] Scanning...", spinner="dots"):
-                items, skipped = collect_files(directory, subdir)
+                items, skipped = collect_files(directory, subdir, strict)
                 skipped_items.extend(skipped)
                 gcp_items = retrieve_gcp_files(client, target_bucket, rel_directory, subdir, return_blobs=False)
 
-            to_upload = find_files_to_upload(items, gcp_items, directory)
+            to_upload = find_files_to_upload(items, gcp_items, directory, strict=strict)
 
             # track which subdirectories contain missing/outdated files
             if len(to_upload) > 0:
@@ -453,11 +469,15 @@ def status(ctx):
                 for dir in upload_dict:
                     modified = len([file for file in upload_dict[dir] if file['reason'] == 'modified'])
                     missing = len([file for file in upload_dict[dir] if file['reason'] == 'missing'])
+                    mismatch = len([file for file in upload_dict[dir] if file['reason'] == 'checksum mismatch']) if strict else 0
+                    
                     print(f'- {dir}: {len(upload_dict[dir])} files out of date')
                     if modified > 0:
                         print(f'  • {modified} modified')
                     if missing > 0:
                         print(f'  • {missing} missing')
+                    if mismatch > 0:
+                        print(f'  • {mismatch} have checksum mismatch')
             else:
                 # print every file + reason for backing up
                 for dir in upload_dict:
@@ -479,9 +499,24 @@ def status(ctx):
 
 @cli.command()
 @click.pass_context
-@click.option("--upload_all", is_flag=True, default=False, help="Back up all files in tracked subdirectories")
-@click.option("--jobs", default=4, show_default=True, help="Parallel upload workers")
-def update(ctx, jobs, upload_all):
+@click.option(
+    "--upload_all",
+    is_flag=True,
+    default=False,
+    help="Back up all files in tracked subdirectories"
+)
+@click.option(
+    "--jobs",
+    default=4,
+    show_default=True,
+    help="Parallel upload workers"
+)
+@click.option(
+    '--strict',
+    is_flag=True,
+    help='Use checksum comparison to ensure that backed up files are identical to local ones'
+)
+def update(ctx, jobs, upload_all, strict):
     """Run the backup on tracked directories, backing up any outdated/missing files."""
 
     # initialize function variables
@@ -512,10 +547,10 @@ def update(ctx, jobs, upload_all):
                 subdir = '*'
 
             with console.status(f"[bold cyan][{subdir}][/bold cyan] Scanning...", spinner="dots"):
-                items, skipped = collect_files(directory, subdir)
+                items, skipped = collect_files(directory, subdir, strict)
                 gcp_items = retrieve_gcp_files(client, target_bucket, rel_directory, subdir)
 
-            to_upload = find_files_to_upload(items, gcp_items, directory, upload_all)
+            to_upload = find_files_to_upload(items, gcp_items, directory, upload_all, strict)
             if len(skipped) > 0:
                 all_skipped.extend(skipped)
 
@@ -800,7 +835,9 @@ def bucket(ctx, names):
                     ws.update_cell(ind + 2, 7, bucket_addr)
     
             if directory == '*':
-                directory = 'all directories'
+                print(f'Set the destination bucket for all directories to {bucket_addr}')
+                sys.exit(0)
+
             print(f'Set the destination bucket for {directory} to {bucket_addr}')
 
     if len(config['directories']) == 0:
@@ -822,7 +859,9 @@ def bucket(ctx, names):
             config['directories'][directory]['bucket'] = bucket_addr
 
         if directory == '*':
-            directory = 'all directories'
+            print(f'Set the destination bucket for all directories to {bucket_addr}')
+            sys.exit(0)
+
         print(f'Set the destination bucket for {directory} to {bucket_addr}')
 
     # dump the updated config dictionary contents into the backfile
@@ -1074,134 +1113,6 @@ def unsync(ctx):
     # write the updated config object to backfile
     with open("backfile.yaml", "w") as f:
         yaml.dump(config, f, default_flow_style=False)
-
-
-@cli.command()
-@click.pass_context
-def verify(ctx):
-    """Verify the integrity of uploaded files by computing checksums and comparing them with stored checksums in GCS"""
-    target_directories = ctx.obj["directories"]
-    config = ctx.obj["config"]
-    client = ctx.obj["client"]
-    sheet_url = config['google_sheet']['sheet_url']
-    sheet_creds = config['google_sheet']['sheet_credentials']
-    mismatched = {}
-    total_mismatched = 0
-
-    # if backman is synced with a Google Sheet, read directory information from it
-    if sheet_url != '':
-        _, _, target_directories = retrieve_google_sheet(sheet_url, sheet_creds)
-    
-    print('Computing CRC32c checksums of each file. This may take a while...')
-    # iterate over tracked directories and check for outdated/missing files
-    for directory in target_directories.keys():
-        print(f'Scanning {directory}...')
-        if not target_directories[directory]['active']:
-            continue
-        target_bucket = target_directories[directory]['bucket']
-        target_subdirs = target_directories[directory]['subdirs']
-        rel_directory = os.path.basename(directory)
-        counter = 1
-
-        for subdir in target_subdirs:
-            with console.status(f"[bold cyan][{subdir}][/bold cyan] Fetching manifest...", spinner="dots"):
-                items, _ = collect_files(directory, subdir)
-                gcp_items = retrieve_gcp_files(client, target_bucket, rel_directory, subdir)
-
-            failed_verification = {'missing': [], 'mismatch': []}
-
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[bold]{task.description}"),
-                BarColumn(),
-                MofNCompleteColumn(),
-                TextColumn("•"),
-                TimeElapsedColumn(),
-                console=console,
-            ) as progress:
-                task = progress.add_task(
-                    f"[{counter}/{len(target_subdirs)}] Verifying [bold]{subdir}[/bold]...",
-                    total=len(items),
-                )
-
-                for file in items:
-                    abs_path = file['path']
-                    rel_path = os.path.relpath(abs_path, directory)
-                    folder = os.path.basename(directory)
-                    remote_key = folder + '/' + rel_path
-
-                    if remote_key not in gcp_items:
-                        failed_verification['missing'].append(file)
-                        total_mismatched += 1
-                        progress.advance(task)
-                        continue
-
-                    file_crc32c = file_crc32c_b64(abs_path)
-                    if file_crc32c != gcp_items[remote_key]["crc32c"]:
-                        total_mismatched += 1
-                        failed_verification['mismatch'].append(file)
-
-                    progress.advance(task)
-
-            if len(failed_verification['mismatch']) > 0 or len(failed_verification['missing']) > 0:
-                mismatched[subdir] = failed_verification
-            counter += 1
-
-    # alert the user to any files with mismatches and offer to reupload them
-    if len(mismatched) > 0:
-        if total_mismatched % 10 == 1:
-            placeholder = "ITEM"
-        else:
-            placeholder = "ITEMS"
-
-        print(f"\n======= {total_mismatched} {placeholder} FAILED VERIFICATION =======\n")
-        if total_mismatched > 20:
-            # print compressed subdirectory overview
-            opt = prompt_choice(f"Print all {total_mismatched} items? (y/[n]): ", ['yes', 'y', 'no', 'n', ''])
-            if opt in ['no', 'n', '']:
-                print("Displaying summary of tracked directories:")
-                # iterate over directories with missing/outdated files and print how many files need to be updated
-                for dir in mismatched:
-                    mismatch = len(mismatched[dir]['mismatch'])
-                    missing = len(mismatched[dir]['missing'])
-                    print(f'- {dir}: {len(mismatched[dir])} files out of date')
-                    if mismatch > 0:
-                        print(f'  • {mismatch} files with checksum mismatch')
-                    if missing > 0:
-                        print(f'  • {missing} files missing')
-            else:
-                # print every file + reason for backing up
-                for dir in mismatched:
-                    print(f"{dir}:")
-                    if len(mismatched[dir]['mismatch']) > 0:
-                        print(" - checksum mismatch:")
-                        for file in mismatched[dir]['mismatch']:
-                            print(f"  • {file['path']}")
-                    if len(mismatched[dir]['missing']) > 0:
-                        print(" - missing:")
-                        for file in mismatched[dir]['missing']:
-                            print(f"  • {file['path']}")
-        else:
-            for dir in mismatched:
-                print(f"{dir}:")
-                if len(mismatched[dir]['mismatch']) > 0:
-                    print(" - checksum mismatch:")
-                    for file in mismatched[dir]['mismatch']:
-                        print(f"  • {file['path']}")
-                if len(mismatched[dir]['missing']) > 0:
-                    print(" - missing:")
-                    for file in mismatched[dir]['missing']:
-                        print(f"  • {file['path']}")
-    
-        resp = prompt_choice('Would you like to run `backman update` automatically to upload the mismatched/missing files? (y/[n]): ', ['y', 'yes', 'n', 'no', ''])
-        if resp in ['y', 'yes']:
-            update(ctx)
-
-        print()
-        sys.exit(0)
-    else:
-        print('All checksums matched!\n')
-        sys.exit(0)
 
 
 @cli.command()
