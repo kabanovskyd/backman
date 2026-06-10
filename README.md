@@ -59,33 +59,33 @@ Backfiles can be edited manually, but it is generally recommended to interact wi
 ### Commands ###
 
 #### Setup ####
-- `backman init` — Initialize a new Backfile in the current directory.
+- `backman init` - Initialize a new Backfile in the current directory.
     - Note: this will **overwrite** an existing Backfile! Use this only when you want to start from scratch.
-- `backman set auth <auth_file>` — Set the GCP credentials JSON file.
-- `backman set bucket <dir>:<bucket> ...` — Assign a GCS bucket to a directory. Use `*` to assign to all tracked directories.
-- `backman sync <url> <creds>` — Sync directory config from a Google Sheet (overrides Backfile tracking).
-- `backman unsync` — Remove Google Sheet sync and revert to Backfile-only tracking.
+- `backman set auth <auth_file>` - Set the GCP credentials JSON file.
+- `backman set bucket <dir>:<bucket> ...` - Assign a GCS bucket to a directory. Use `*` to assign to all tracked directories.
+- `backman sync <url> <creds>` - Sync directory config from a Google Sheet (overrides Backfile tracking).
+- `backman unsync` - Remove Google Sheet sync and revert to Backfile-only tracking.
 
 #### Tracking ####
-- `backman add <dir>:<subdir> ...` — Add a directory/subdirectory pair to tracking.
+- `backman add <dir>:<subdir> ...` - Add a directory/subdirectory pair to tracking.
     - `backman add /data/lab/project1:subdir1 /data/lab/project2:subdir2`
     - OR read from a file: `backman add --file dirs.txt`
-- `backman exclude <dir> ...` — Pause tracking for specified directories (kept in config, marked inactive).
+- `backman exclude <dir> ...` - Pause tracking for specified directories (kept in config, marked inactive).
     - `backman exclude /data/lab/project1 /data/lab/project2`
-- `backman include <dir> ...` — Resume tracking for previously excluded directories.
+- `backman include <dir> ...` - Resume tracking for previously excluded directories.
     - `backman include /data/lab/project1`
-- `backman config` — Display the current Backfile or Google Sheet configuration.
+- `backman config` - Display the current Backfile or Google Sheet configuration.
 
 #### Backup & Restore ####
-- `backman status` — Show outdated/missing files across all tracked directories.
-- `backman update` — Upload missing or changed files to GCS.
-    - `--all` — Re-upload all files regardless of change status.
-    - `--jobs <n>` — Number of parallel upload workers (default: 4).
-- `backman verify` — Compare local CRC32c checksums against GCS to confirm backup integrity.
-- `backman restore <dir> ...` — Download a backup from GCS to local disk.
-    - `backman restore /data/lab/project1:subdir1` — Restore a specific subdirectory.
-    - `backman restore /data/lab/project1:*` — Restore all subdirectories for a directory.
-    - `backman restore *` — Restore all tracked directories.
+- `backman status` - Show outdated/missing files across all tracked directories.
+- `backman update` - Upload missing or changed files to GCS.
+    - `--all` - Re-upload all files regardless of change status.
+    - `--jobs <n>` - Number of parallel upload workers (default: 4).
+- `backman verify` - Compare local CRC32c checksums against GCS to confirm backup integrity.
+- `backman restore <dir> ...` - Download a backup from GCS to local disk.
+    - `backman restore /data/lab/project1:subdir1` - Restore a specific subdirectory.
+    - `backman restore /data/lab/project1:*` - Restore all subdirectories for a directory.
+    - `backman restore *` - Restore all tracked directories.
 
 ### Notes ###
 - Requires a GCP service account JSON key; set with: `backman set auth <auth_file>`
