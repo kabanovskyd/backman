@@ -1,4 +1,4 @@
-![Awesome logo](backman-logo.png)
+![Awesome logo](assets/backman-logo.png)
 # backman #
 A command-line tool for managing and automating lab data backups to Google Cloud Storage (GCS).
 
