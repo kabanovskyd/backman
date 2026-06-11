@@ -1008,26 +1008,22 @@ def config(ctx):
 
 @cli.command()
 @click.pass_context
-@click.argument("dirs", nargs=-1, required=True)
-def add(ctx, dirs):
+@click.option("--file", "dir_file", default=None, help="File containing directories to add, one per line.")
+@click.argument("dirs", nargs=-1, required=False)
+def add(ctx, dir_file, dirs):
     config = ctx.obj["config"]
 
-    if dirs[0] == '--file':
-        if len(dirs) < 2:
-            print('Usage: backman add --file [file_with_directories]')
-            sys.exit(1)
-        dir_file = dirs[1]
-        if len(dirs) > 2:
-            print('Usage: backman add --file [file_with_directories]')
-            sys.exit(1)
+    if dir_file is not None:
         if not pathlib.Path(dir_file).is_file():
             print(f'File {dir_file} does not exist!')
             sys.exit(1)
-        
         dirs = []
         with open(dir_file, 'r') as file:
             for line in file:
                 dirs.append(line.strip())
+    elif not dirs:
+        print('Usage: backman add --file [file_with_directories]')
+        sys.exit(1)
 
     added_dirs = {}
     for dir in dirs:
