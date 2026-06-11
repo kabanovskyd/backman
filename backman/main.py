@@ -575,6 +575,10 @@ def backup(ctx, jobs, upload_all, strict, exclude_ext):
             continue
         target_subdirs = target_directories[directory]["subdirs"]
         target_bucket = target_directories[directory]["bucket"]
+        if not target_bucket.strip():
+            print(f"Destination bucket is not set for directory {directory}. Please run `backman set bucket <directory>:<bucket> and re-run the command.")
+            sys.exit(1)
+
         rel_directory = os.path.basename(directory)
 
         # iterate over tracked subdirectories
