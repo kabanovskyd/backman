@@ -446,6 +446,10 @@ def status(ctx, strict):
     for directory in target_directories:
         if not target_directories[directory]['active']:
             continue
+        if not target_directories[directory]['bucket'].strip():
+            print(f'Destination bucket is not set for directory {directory}. Please run `backman set bucket <directory>:<bucket>` and re-run the command.')
+            sys.exit(1)
+        
         target_bucket = target_directories[directory]['bucket']
         target_subdirs = target_directories[directory]['subdirs']
         rel_directory = os.path.basename(directory)
