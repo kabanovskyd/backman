@@ -824,7 +824,7 @@ def init():
     config['authentication_file'] = str(auth_path)
     config['google_sheet'] = {'sheet_url': '', 'sheet_credentials': ''}
     config['directories'] = {}
-    pathlib.Path('./backman').mkdir(exist_ok=True)
+    pathlib.Path(BACKFILE_PATH.parent).mkdir(exist_ok=True)
 
     with open(BACKFILE_PATH, "w") as file:
         yaml.dump(config, file, default_flow_style=False)
