@@ -76,7 +76,7 @@ def manual(ctx, param, value):
     Backup & Restore                                                                                                                 
     ─────────────────────────────────────────────────────────────────────
     status                       Show outdated/missing files across tracked dirs                                                     
-    update                       Upload missing or changed files to GCS                                                              
+    backup                       Upload missing or changed files to GCS                                                              
       --all                        Re-upload all files regardless of change status
       --jobs <n>      (default 4)  Parallel upload workers                                                                                                           
     verify                       Compare local CRC32c checksums against GCS                                                          
@@ -536,7 +536,7 @@ def status(ctx, strict):
     metavar='EXTS',
     help='Comma-separated list of extensions to skip (e.g. --exclude-ext .fastq,.bam,.gz).'
 )
-def update(ctx, jobs, upload_all, strict, exclude_ext):
+def backup(ctx, jobs, upload_all, strict, exclude_ext):
     """Run the backup on tracked directories, backing up any outdated/missing files."""
 
     # try connecting to GCP
@@ -1508,7 +1508,7 @@ def schedule(cron):
 
     entry_point = shutil.which("backman") or f"{sys.executable} {pathlib.Path(__file__).resolve()}"
     log_path = pathlib.Path.home() / ".backman.log"
-    command = f"{entry_point} update >> {log_path} 2>&1"
+    command = f"{entry_point} backup >> {log_path} 2>&1"
 
     tab = CronTab(user=True)
     job_comment = "regular_backman_job"
