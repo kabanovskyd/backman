@@ -31,8 +31,8 @@ console = Console()
 from google.cloud import storage
 
 
-BACKFILE_PATH = pathlib.Path('./backman/backfile')
-HISTORY_PATH = pathlib.Path('./backman/history')
+BACKFILE_PATH = pathlib.Path('.backman/backfile')
+HISTORY_PATH = pathlib.Path('.backman/history')
 
 
 def manual(ctx, param, value):
