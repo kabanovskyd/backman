@@ -18,7 +18,8 @@ echo 'export PATH=$PWD/.venv/bin:$PATH' >> "$HOME/.${SHELL##*/}rc"
 source "$HOME/.${SHELL##*/}rc"
 
 if ! command -v gcloud >/dev/null 2>&1; then
-  echo "[ERROR]: gcloud is not installed or not on PATH"
+  echo "[ERROR]: gcloud is not installed or not on PATH."
+  echo "Please follow the instructions at https://docs.cloud.google.com/sdk/docs/install-sdk to install gcloud."
   exit 1
 fi
 
