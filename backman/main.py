@@ -42,54 +42,71 @@ def manual(ctx, param, value):
 
     print("""
       ------------------------------------------------------------------
-      ██████╗  █████╗  ██████╗██╗  ██╗     ███╗   ███╗ █████╗ ███╗   ██╗    
-      ██╔══██╗██╔══██╗██╔════╝██║ ██╔╝     ████╗ ████║██╔══██╗████╗  ██║   
-      ██████╔╝███████║██║     █████╔╝█████╗██╔████╔██║███████║██╔██╗ ██║  
-      ██╔══██╗██╔══██║██║     ██╔═██╗╚════╝██║╚██╔╝██║██╔══██║██║╚██╗██║  
-      ██████╔╝██║  ██║╚██████╗██║  ██╗     ██║ ╚═╝ ██║██║  ██║██║ ╚████║  
+      ██████╗  █████╗  ██████╗██╗  ██╗     ███╗   ███╗ █████╗ ███╗   ██╗
+      ██╔══██╗██╔══██╗██╔════╝██║ ██╔╝     ████╗ ████║██╔══██╗████╗  ██║
+      ██████╔╝███████║██║     █████╔╝█████╗██╔████╔██║███████║██╔██╗ ██║
+      ██╔══██╗██╔══██║██║     ██╔═██╗╚════╝██║╚██╔╝██║██╔══██║██║╚██╗██║
+      ██████╔╝██║  ██║╚██████╗██║  ██╗     ██║ ╚═╝ ██║██║  ██║██║ ╚████║
       ╚═════╝ ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝     ╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝
       -------------------- Back-man wird backen 🥧 ---------------------
 
-  backman — automated lab data backup tool                                                                                           
-                                                                                                                                     
-  USAGE                                                                                                                              
-    backman <command> [options]                                                                                                      
-                  
+  backman — automated lab data backup tool
+
+  USAGE
+    backman <command> [options]
+
   COMMANDS
 
     Setup
     ─────────────────────────────────────────────────────────────────────
-    init                         Initialize a new Backfile in the current directory                                                  
+    init                         Initialize a new Backfile in the current directory
     set auth <auth_file>         Set the GCP credentials JSON file
-    set bucket <dir>:<bucket> .. Assign a GCS bucket to a directory (* for all)                                                      
-    sync <url> <creds>           Sync directory config from a Google Sheet                                                           
-    unsync                       Remove Google Sheet sync; use Backfile only                                                         
-                                                                                                                                     
-    Tracking      
-    ─────────────────────────────────────────────────────────────────────                                                            
-    add <dir>:<subdir> ...       Add a directory/subdirectory pair to tracking
-    add --file <file>            Add directories listed in a file (one per line)                                                     
-    exclude <dir> ...            Pause tracking for specified directories                                                            
-    include <dir> ...            Resume tracking for specified directories                                                           
-    config                       Display current Backfile / Google Sheet config                                                      
-                  
-    Backup & Restore                                                                                                                 
+    set bucket <dir>:<bucket> .. Assign a GCS bucket to a directory (* for all)
+    sync <url> <creds>           Sync directory config from a Google Sheet
+    unsync                       Remove Google Sheet sync; use Backfile only
+
+    Tracking
     ─────────────────────────────────────────────────────────────────────
-    status                       Show outdated/missing files across tracked dirs                                                     
-    backup                       Upload missing or changed files to GCS                                                              
-      --all                        Re-upload all files regardless of change status
-      --jobs <n>      (default 4)  Parallel upload workers                                                                                                           
-    verify                       Compare local CRC32c checksums against GCS                                                          
-    restore <dir> ...            Download backup from GCS to local disk                                                              
-      <dir>:<subdir>               Restore a specific subdirectory                                                                   
-      <dir>:*                      Restore all subdirs for a directory                                                               
-      *                            Restore all tracked directories                                                                   
-                                                                                                                                     
-  NOTES                                                                                                                              
-    - Requires a GCP service account JSON key; set with: backman set <auth_file>
-    - Directory format for add/restore: /absolute/path/to/dir:subdirname                                                             
-    - Backfile (backfile.yaml) must exist in the working directory for most commands
-            
+    add <dir>:<subdir> ...       Add a directory/subdirectory pair to tracking
+      <dir>:*                      Add all subdirectories within a directory
+      --file <file>                Add directories listed in a file (one per line)
+    remove <dir>:<subdir> ...    Remove a directory/subdirectory pair from tracking
+      <dir>:*                      Remove all subdirectories from a directory
+      --file <file>                Remove directories listed in a file (one per line)
+    exclude <dir> ...            Pause tracking for specified directories (use 'all' for all)
+    include <dir> ...            Resume tracking for specified directories (use 'all' for all)
+    config                       Display current Backfile / Google Sheet config
+
+    Backup & Restore
+    ─────────────────────────────────────────────────────────────────────
+    status                       Show outdated/missing files across tracked dirs
+      --strict                     Use CRC32c checksum comparison instead of size
+    backup                       Upload missing or changed files to GCS
+      --upload_all                 Re-upload all files regardless of change status
+      --jobs <n>      (default 4)  Parallel upload workers
+      --strict                     Use CRC32c checksum comparison instead of size
+      --exclude-ext <exts>         Skip files by extension (e.g. --exclude-ext .fastq,.bam,.gz)
+    restore <dir> ...            Download backup from GCS to local disk
+      <dir>:<subdir>               Restore a specific subdirectory
+      <dir>:*                      Restore all subdirs for a directory
+      *                            Restore all tracked directories
+
+    Scheduling
+    ─────────────────────────────────────────────────────────────────────
+    schedule <cron_expr>         Schedule automatic backups via cron (e.g. "0 2 * * *")
+    unschedule                   Remove the scheduled backup cron job
+    jobs                         Show the next scheduled backup run time
+
+    Audit
+    ─────────────────────────────────────────────────────────────────────
+    history                      Show a log of past backup, restore, and config events
+
+  NOTES
+    - Requires a GCP service account JSON key; set with: backman set auth <auth_file>
+    - Directory format for add/remove/restore: /absolute/path/to/dir:subdirname
+    - Backfile (.backman/backfile) must exist in the working directory for most commands
+    - Cron job logs are written to ~/.backman.log
+
     """)
     sys.exit(0)
 
