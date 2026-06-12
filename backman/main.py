@@ -104,9 +104,13 @@ def get_version():
         # Fallback: Read directly from pyproject.toml if running uninstalled
         pyproject_path = pathlib.Path(__file__).parent.parent / "pyproject.toml"
         if pyproject_path.exists():
-            with open(pyproject_path, "rb") as f:
-                data = tomllib.load(f)
-                return data.get("project", {}).get("version", "unknown")
+            try:
+                with open(pyproject_path, "rb") as f:
+                    data = tomllib.load(f)
+                    return data.get("project", {}).get("version", "unknown")
+            except Exception as e:
+                print(f'Could not read from pyproject.toml: {e}')
+                sys.exit(1)
         else:
             print("Pyproject.toml file not found in root! Exiting...")
             sys.exit(1)
@@ -121,9 +125,13 @@ def file_crc32c_b64(
     """
 
     val = 0
-    with open(path, "rb") as f:
-        while chunk := f.read(chunk_size):
-            val = google_crc32c.extend(val, chunk)
+    try:
+        with open(path, "rb") as f:
+            while chunk := f.read(chunk_size):
+                val = google_crc32c.extend(val, chunk)
+    except Exception as e:
+        print(f'Could not open {path} for reading: {e}')
+        sys.exit(1)
 
     # encode as big-endian uint32 -> base64
     return base64.b64encode(struct.pack(">I", val)).decode()
@@ -331,15 +339,23 @@ def collect_files(root: str, subdir: str, checksum: bool, exclude_exts: tuple = 
 def write_history_event(event):
     history = {}
     if pathlib.Path(HISTORY_PATH).is_file():
-        with open(HISTORY_PATH, 'r') as f:
-            history = yaml.safe_load(f) or {}
+        try:
+            with open(HISTORY_PATH, 'r') as f:
+                history = yaml.safe_load(f) or {}
+        except Exception as e:
+            print(f'Could not open history file for reading: {e}')
+            sys.exit(1)
     date = datetime.now().strftime('%Y-%m-%d')
     if date not in history:
         history[date] = []
     history[date].append(event)
     pathlib.Path(HISTORY_PATH).parent.mkdir(exist_ok=True)
-    with open(HISTORY_PATH, 'w') as f:
-        yaml.dump(history, f, default_flow_style=False)
+    try:
+        with open(HISTORY_PATH, 'w') as f:
+            yaml.dump(history, f, default_flow_style=False)
+    except Exception as e:
+        print(f'Could not write to history file: {e}')
+        sys.exit(1)
 
 
 @click.group(add_help_option=False)                
@@ -367,6 +383,12 @@ def cli(ctx):
         print(f"Could not load the Backfile: {e}")
         sys.exit(1)
 
+    if config is None:
+        config = {'authentication_file': ''}
+
+    if 'authentication_file' not in config:
+        config['authentication_file'] = ''
+
     ctx.obj["config"] = config
 
     # skip the authentication process if setting auth file
@@ -374,11 +396,8 @@ def cli(ctx):
         return
 
     # store authentication key file as an environment variable
-    if 'authentication_file' not in config:
-        print("`authentication_file` field missing from Backfile! Add it manually or run `backman set auth <path/to/auth/file>`")
-        sys.exit(1)
     if not pathlib.Path(config['authentication_file']).is_file():
-        print(f'Authentication file {config['authentication_file']} does not exist!')
+        print(f'Authentication file {config['authentication_file']} does not exist! Run `backman set auth <path/to/auth/file>` to set it to a correct filepath.')
         sys.exit(1)
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = config['authentication_file']
 
@@ -404,8 +423,12 @@ def cli(ctx):
     if config['google_sheet']['sheet_url'] is None:
         config['google_sheet']['sheet_url'] = ''
 
-    with open(BACKFILE_PATH, "w") as f:
-        yaml.dump(config, f, default_flow_style=False)
+    try:
+        with open(BACKFILE_PATH, "w") as f:
+            yaml.dump(config, f, default_flow_style=False)
+    except Exception as e:
+        print(f'Could not write to Backfile: {e}')
+        sys.exit(1)
 
     ctx.obj["config"] = config
 
@@ -713,8 +736,12 @@ def exclude(ctx, dirs):
                 inactive.append(directory)
         
         # write new config values to backfile
-        with open(BACKFILE_PATH, "w") as f:
-            yaml.dump(config, f, default_flow_style=False)
+        try:
+            with open(BACKFILE_PATH, "w") as f:
+                yaml.dump(config, f, default_flow_style=False)
+        except Exception as e:
+            print(f'Could not write to Backfile: {e}')
+            sys.exit(1)
         
     # print status update info
     if len(excluded) > 0:
@@ -794,8 +821,12 @@ def include(ctx, dirs):
                 active.append(directory)
         
         # write updated field values to backfile
-        with open(BACKFILE_PATH, "w") as f:
-            yaml.dump(config, f, default_flow_style=False)
+        try:
+            with open(BACKFILE_PATH, "w") as f:
+                yaml.dump(config, f, default_flow_style=False)
+        except Exception as e:
+            print(f'Could not write to Backfile: {e}')
+            sys.exit(1)
 
     # print status update info
     if len(included) > 0:
@@ -834,8 +865,12 @@ def init():
     config['directories'] = {}
     pathlib.Path(BACKFILE_PATH.parent).mkdir(exist_ok=True)
 
-    with open(BACKFILE_PATH, "w") as file:
-        yaml.dump(config, file, default_flow_style=False)
+    try:
+        with open(BACKFILE_PATH, "w") as file:
+            yaml.dump(config, file, default_flow_style=False)
+    except Exception as e:
+        print(f'Could not write to Backfile: {e}')
+        sys.exit(1)
 
     write_history_event({'type': 'creation'})
     print("Backfile created!\n")
@@ -858,8 +893,12 @@ def auth(ctx, path):
 
     config['authentication_file'] = path
     print(f'\nSet {path} as the authentication key file.\n')
-    with open(BACKFILE_PATH, "w") as file:
-        yaml.dump(config, file, default_flow_style=False)
+    try:
+        with open(BACKFILE_PATH, "w") as file:
+            yaml.dump(config, file, default_flow_style=False)
+    except Exception as e:
+        print(f'Could not write to Backfile: {e}')
+        sys.exit(1)
 
 @set.command()
 @click.pass_context
@@ -926,8 +965,12 @@ def bucket(ctx, names):
                 print(f'Set the destination bucket for {directory} to {bucket_addr}')
 
         # dump the updated config dictionary contents into the backfile
-        with open(BACKFILE_PATH, "w") as file:
-            yaml.dump(config, file, default_flow_style=False)
+        try:
+            with open(BACKFILE_PATH, "w") as file:
+                yaml.dump(config, file, default_flow_style=False)
+        except Exception as e:
+            print(f'Could not write to Backfile: {e}')
+            sys.exit(1)
 
     bucket_assignments = {}
     for address in names:
@@ -1026,9 +1069,13 @@ def add(ctx, dir_file, dirs):
             print(f'File {dir_file} does not exist!')
             sys.exit(1)
         dirs = []
-        with open(dir_file, 'r') as file:
-            for line in file:
-                dirs.append(line.strip())
+        try:
+            with open(dir_file, 'r') as file:
+                for line in file:
+                    dirs.append(line.strip())
+        except Exception as e:
+            print(f'Could not open the dir file: {e}')
+            sys.exit(1)
     elif not dirs:
         print('Usage: backman add --file [file_with_directories]')
         sys.exit(1)
@@ -1096,9 +1143,12 @@ def add(ctx, dir_file, dirs):
         config['directories'][directory]['active'] = True
         if 'subdirs' not in config['directories'][directory]:
             config['directories'][directory]['subdirs'] = []
-    
-    with open(BACKFILE_PATH, "w") as f:
-        yaml.dump(config, f, default_flow_style=False)
+    try:
+        with open(BACKFILE_PATH, "w") as f:
+            yaml.dump(config, f, default_flow_style=False)
+    except Exception as e:
+        print(f'Could not write to Backfile: {e}')
+        sys.exit(1)
     
     if any([len(added_dirs[dir]) > 0 for dir in added_dirs]):
         print('\nThe following directories have been added to tracking:\n')
@@ -1132,9 +1182,13 @@ def remove(ctx, dirs):
             sys.exit(1)
         
         dirs = []
-        with open(dir_file, 'r') as file:
-            for line in file:
-                dirs.append(line.strip())
+        try:
+            with open(dir_file, 'r') as file:
+                for line in file:
+                    dirs.append(line.strip())
+        except Exception as e:
+            print(f'Could not open the dir file: {e}')
+            sys.exit(1)
 
     removed_dirs = {}
     for dir in dirs:
@@ -1181,9 +1235,12 @@ def remove(ctx, dirs):
         
         if not config['directories'][directory]['subdirs']:
             del config['directories'][directory]
-    
-    with open(BACKFILE_PATH, "w") as f:
-        yaml.dump(config, f, default_flow_style=False)
+    try:
+        with open(BACKFILE_PATH, "w") as f:
+            yaml.dump(config, f, default_flow_style=False)
+    except Exception as e:
+        print(f'Could not write to Backfile: {e}')
+        sys.exit(1)
     
     print('\nThe following directories have been removed from tracking:\n')
     for dir in removed_dirs:
@@ -1243,8 +1300,12 @@ def sync(ctx, url, creds):
     config['google_sheet']['sheet_url'] = url
     config['google_sheet']['sheet_credentials'] = str(creds)
 
-    with open(BACKFILE_PATH, "w") as f:
-        yaml.safe_dump(config, f, default_flow_style=False)
+    try:
+        with open(BACKFILE_PATH, "w") as f:
+            yaml.safe_dump(config, f, default_flow_style=False)
+    except Exception as e:
+        print(f'Could not write to Backfile: {e}')
+        sys.exit(1)
 
     write_history_event({'type': 'sync', 'url': url})
 
@@ -1267,8 +1328,12 @@ def unsync(ctx):
     print('NOTE: backman will now ONLY track the directories specified in the Backfile!\n')
 
     # write the updated config object to backfile
-    with open(BACKFILE_PATH, "w") as f:
-        yaml.dump(config, f, default_flow_style=False)
+    try:
+        with open(BACKFILE_PATH, "w") as f:
+            yaml.dump(config, f, default_flow_style=False)
+    except Exception as e:
+        print(f'Could not write to Backfile: {e}')
+        sys.exit(1)
 
     write_history_event({'type': 'unsync', 'url': url})
 
@@ -1427,8 +1492,12 @@ def history(ctx):
         print('No history recorded yet.')
         return
 
-    with open(HISTORY_PATH, 'r') as file:
-        hist = yaml.safe_load(file) or {}
+    try:
+        with open(HISTORY_PATH, 'r') as file:
+            hist = yaml.safe_load(file) or {}
+    except Exception as e:
+        print(f'Could not read history file: {e}')
+        sys.exit(1)
 
     if not hist:
         print('No history recorded yet.')
